@@ -106,9 +106,14 @@ def run_control():
                 logger.info(f"Retrieved {len(daily_prices)} quarter-hourly prices")
                 logger.info(f"Price range: {min(daily_prices):.2f} - {max(daily_prices):.2f} c/kWh")
                 logger.info(f"Configuration: Max {MAX_SHUTOFF_HOURS}h shutoff, Always-on threshold: {PRICE_ALWAYS_ON_THRESHOLD:.2f} c/kWh")
-                
-                # Determine if central heating should run
-                should_run, reason = should_central_heating_run(current_price, daily_prices)
+
+                # If room heater is on, always keep central heating on
+                if should_heat:
+                    should_run = True
+                    reason = "Room heater is ON - central heating forced ON"
+                else:
+                    # Determine if central heating should run based on price ranking
+                    should_run, reason = should_central_heating_run(current_price, daily_prices)
                 
                 # Log decision to Home Assistant for easy filtering
                 log_heating_decision(should_run, reason, current_price)
