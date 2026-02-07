@@ -403,6 +403,31 @@
                         <div class="metric-label">Kaava: lämpötila + (hinta - 5) / 5</div>
                     </div>
                 </div>
+                
+                <div class="card">
+                    <h2>🏠 KHH termostaatti</h2>
+                    <div class="metric">
+                        <div class="metric-label">Mitattu lämpötila</div>
+                        <div class="metric-value">
+                            <span id="khh-raw-temp">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Hintasäätö</div>
+                        <div class="metric-value">
+                            <span id="khh-adjustment">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">→ Termostaatille lähetetty</div>
+                        <div class="metric-value" style="color: #17a2b8;">
+                            <span id="khh-adjusted-temp">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="metric secondary">
+                        <div class="metric-label">Kaava: lämpötila + (hinta - 5) / 5</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -507,8 +532,8 @@
                 document.getElementById('adjust-setpoint').textContent = data.temperature.setpoint.toFixed(1);
                 
                 // Update bathroom thermostat section
-                if (data.bathroom_thermostat && data.bathroom_thermostat.configured) {
-                    const bt = data.bathroom_thermostat;
+                if (data.thermostats && data.thermostats.bathroom && data.thermostats.bathroom.configured) {
+                    const bt = data.thermostats.bathroom;
                     document.getElementById('bathroom-raw-temp').textContent = bt.raw_temp !== null ? bt.raw_temp.toFixed(1) : '--';
                     document.getElementById('bathroom-adjustment').textContent = bt.adjustment !== null ? ((bt.adjustment >= 0 ? '+' : '') + bt.adjustment.toFixed(2)) : '--';
                     document.getElementById('bathroom-adjusted-temp').textContent = bt.adjusted_temp !== null ? bt.adjusted_temp.toFixed(1) : '--';
@@ -516,6 +541,18 @@
                     document.getElementById('bathroom-raw-temp').textContent = '--';
                     document.getElementById('bathroom-adjustment').textContent = '--';
                     document.getElementById('bathroom-adjusted-temp').textContent = '--';
+                }
+                
+                // Update KHH thermostat section
+                if (data.thermostats && data.thermostats.khh && data.thermostats.khh.configured) {
+                    const khh = data.thermostats.khh;
+                    document.getElementById('khh-raw-temp').textContent = khh.raw_temp !== null ? khh.raw_temp.toFixed(1) : '--';
+                    document.getElementById('khh-adjustment').textContent = khh.adjustment !== null ? ((khh.adjustment >= 0 ? '+' : '') + khh.adjustment.toFixed(2)) : '--';
+                    document.getElementById('khh-adjusted-temp').textContent = khh.adjusted_temp !== null ? khh.adjusted_temp.toFixed(1) : '--';
+                } else {
+                    document.getElementById('khh-raw-temp').textContent = '--';
+                    document.getElementById('khh-adjustment').textContent = '--';
+                    document.getElementById('khh-adjusted-temp').textContent = '--';
                 }
                 
                 // Update price
