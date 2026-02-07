@@ -3,30 +3,39 @@ Background Tasks for Temperature Control System.
 
 Contains long-running background tasks:
 - Cache warmer: Pre-fetches API data to speed up web UI
-- Bathroom thermostat: Sends price-adjusted temperature to Shelly TRV
+- Price-adjusted thermostats: Sends price-adjusted temperature to Shelly TRVs
 """
 import logging
 import time
 import requests
+import threading
 
-from .config import BATHROOM_THERMOSTAT_URL, BATHROOM_TEMP_SENSOR, HA_URL, HA_HEADERS
+from .config import (
+    BATHROOM_THERMOSTAT_URL, BATHROOM_TEMP_SENSOR,
+    KHH_THERMOSTAT_URL, KHH_TEMP_SENSOR,
+    HA_URL, HA_HEADERS
+)
 from .ha_client import get_current_price
 
 logger = logging.getLogger(__name__)
 
 
-def get_bathroom_raw_temperature():
-    """Get raw temperature from bathroom sensor (Ruuvitag).
+def get_sensor_temperature(sensor_id: str, sensor_name: str) -> float:
+    """Get raw temperature from a sensor.
+    
+    Args:
+        sensor_id: HA sensor entity ID
+        sensor_name: Human-readable name for logging
     
     Returns:
         float: Raw temperature in Celsius, or None if unavailable
     """
-    if not BATHROOM_TEMP_SENSOR:
+    if not sensor_id:
         return None
     
     try:
         response = requests.get(
-            f"{HA_URL}/api/states/{BATHROOM_TEMP_SENSOR}",
+            f"{HA_URL}/api/states/{sensor_id}",
             headers=HA_HEADERS,
             timeout=5
         )
@@ -35,15 +44,14 @@ def get_bathroom_raw_temperature():
             if state and state != 'unavailable' and state != 'unknown':
                 return float(state)
     except Exception as e:
-        logger.warning(f"Error reading {BATHROOM_TEMP_SENSOR}: {e}")
+        logger.warning(f"Error reading {sensor_name} sensor ({sensor_id}): {e}")
     return None
 
 
-def calculate_bathroom_adjusted_temperature(raw_temp: float, price: float) -> float:
-    """Calculate price-adjusted temperature for bathroom thermostat.
+def calculate_price_adjusted_temperature(raw_temp: float, price: float) -> float:
+    """Calculate price-adjusted temperature for thermostat.
     
-    Same logic as HA template sensor:
-    adjusted_temp = base_temp + (electricity_price - 5) / 5
+    Formula: adjusted_temp = base_temp + (electricity_price - 5) / 5
     
     This makes the thermostat think it's warmer when electricity is expensive
     (so it heats less) and cooler when electricity is cheap (so it heats more).
@@ -80,12 +88,13 @@ def _send_to_thermostat(url: str, timeout: int = 5) -> bool:
     return response.status_code == 200
 
 
-def _send_with_retry(url: str, adjusted_temp: float, max_retry_time: int = 840):
+def _send_with_retry(url: str, adjusted_temp: float, thermostat_name: str, max_retry_time: int = 840):
     """Background thread function to send temperature with exponential backoff.
     
     Args:
         url: Full URL to send to
         adjusted_temp: Temperature value being sent (for logging)
+        thermostat_name: Name of thermostat for logging (e.g., "bathroom", "KHH")
         max_retry_time: Maximum total time to retry in seconds
     """
     # Exponential backoff parameters
@@ -99,35 +108,35 @@ def _send_with_retry(url: str, adjusted_temp: float, max_retry_time: int = 840):
         try:
             if _send_to_thermostat(url):
                 if attempt == 1:
-                    logger.info(f"Sent {adjusted_temp:.1f}°C to bathroom thermostat")
+                    logger.info(f"Sent {adjusted_temp:.1f}°C to {thermostat_name} thermostat")
                 else:
-                    logger.info(f"Sent {adjusted_temp:.1f}°C to bathroom thermostat (attempt {attempt})")
+                    logger.info(f"Sent {adjusted_temp:.1f}°C to {thermostat_name} thermostat (attempt {attempt})")
                 return
             else:
-                logger.info(f"Bathroom thermostat returned non-200, attempt {attempt}")
+                logger.info(f"{thermostat_name} thermostat returned non-200, attempt {attempt}")
                 
         except requests.exceptions.Timeout:
-            logger.info(f"Bathroom thermostat timeout, attempt {attempt}")
+            logger.info(f"{thermostat_name} thermostat timeout, attempt {attempt}")
         except requests.exceptions.ConnectionError:
-            logger.info(f"Bathroom thermostat connection error, attempt {attempt}")
+            logger.info(f"{thermostat_name} thermostat connection error, attempt {attempt}")
         except Exception as e:
-            logger.info(f"Bathroom thermostat error: {e}, attempt {attempt}")
+            logger.info(f"{thermostat_name} thermostat error: {e}, attempt {attempt}")
         
         # Check if we've exceeded max retry time
         elapsed = time.time() - start_time
         if elapsed + delay > max_retry_time:
-            logger.warning(f"Failed to send temperature to bathroom thermostat after {attempt} attempts over {elapsed:.0f}s")
+            logger.warning(f"Failed to send temperature to {thermostat_name} thermostat after {attempt} attempts over {elapsed:.0f}s")
             return
         
         # Wait before next retry (exponential backoff)
-        logger.info(f"Retrying bathroom thermostat in {delay}s...")
+        logger.info(f"Retrying {thermostat_name} thermostat in {delay}s...")
         time.sleep(delay)
         delay = min(delay * 2, max_delay)
         attempt += 1
 
 
-def send_temperature_to_bathroom_thermostat():
-    """Send price-adjusted temperature to bathroom thermostat.
+def _send_temperature_to_thermostat(sensor_id: str, thermostat_url: str, thermostat_name: str):
+    """Send price-adjusted temperature to a thermostat.
     
     This function calculates the adjusted temperature and spawns a background
     thread to send it with exponential backoff retries. This way the main
@@ -138,39 +147,64 @@ def send_temperature_to_bathroom_thermostat():
     - Max delay: 120 seconds (2 minutes)
     - Total retry time: 14 minutes (before next 15-min cycle)
     
-    Called from main control cycle every 15 minutes.
+    Args:
+        sensor_id: HA sensor entity ID
+        thermostat_url: Shelly TRV URL (without temperature parameter)
+        thermostat_name: Human-readable name for logging
     """
-    import threading
-    
-    if not BATHROOM_THERMOSTAT_URL:
+    if not thermostat_url:
         return
     
-    # Get raw temperature from Ruuvitag
-    raw_temp = get_bathroom_raw_temperature()
+    # Get raw temperature from sensor
+    raw_temp = get_sensor_temperature(sensor_id, thermostat_name)
     if raw_temp is None:
-        logger.warning("Could not get bathroom temperature, skipping thermostat update")
+        logger.warning(f"Could not get {thermostat_name} temperature, skipping thermostat update")
         return
     
     # Get current electricity price
     price = get_current_price()
     if price is None:
-        logger.warning("Could not get electricity price, using raw temperature")
+        logger.warning(f"Could not get electricity price, using raw temperature for {thermostat_name}")
         adjusted_temp = raw_temp
     else:
-        # Apply price adjustment (same formula as HA template)
-        adjusted_temp = calculate_bathroom_adjusted_temperature(raw_temp, price)
-        logger.info(f"Bathroom temp: {raw_temp:.1f}°C raw, {adjusted_temp:.1f}°C adjusted (price: {price:.2f} c/kWh)")
+        # Apply price adjustment
+        adjusted_temp = calculate_price_adjusted_temperature(raw_temp, price)
+        logger.info(f"{thermostat_name} temp: {raw_temp:.1f}°C raw, {adjusted_temp:.1f}°C adjusted (price: {price:.2f} c/kWh)")
     
     # Build URL and spawn background thread for sending with retry
-    url = f"{BATHROOM_THERMOSTAT_URL}{adjusted_temp:.1f}"
+    url = f"{thermostat_url}{adjusted_temp:.1f}"
     thread = threading.Thread(
         target=_send_with_retry,
-        args=(url, adjusted_temp),
+        args=(url, adjusted_temp, thermostat_name),
         daemon=True,
-        name="bathroom-thermostat-sender"
+        name=f"{thermostat_name}-thermostat-sender"
     )
     thread.start()
-    logger.debug("Spawned background thread for bathroom thermostat update")
+    logger.debug(f"Spawned background thread for {thermostat_name} thermostat update")
+
+
+def send_temperature_to_bathroom_thermostat():
+    """Send price-adjusted temperature to bathroom thermostat.
+    
+    Called from main control cycle every 15 minutes.
+    """
+    _send_temperature_to_thermostat(
+        sensor_id=BATHROOM_TEMP_SENSOR,
+        thermostat_url=BATHROOM_THERMOSTAT_URL,
+        thermostat_name="bathroom"
+    )
+
+
+def send_temperature_to_khh_thermostat():
+    """Send price-adjusted temperature to KHH thermostat.
+    
+    Called from main control cycle every 15 minutes.
+    """
+    _send_temperature_to_thermostat(
+        sensor_id=KHH_TEMP_SENSOR,
+        thermostat_url=KHH_THERMOSTAT_URL,
+        thermostat_name="KHH"
+    )
 
 
 def warm_cache(app, endpoints):

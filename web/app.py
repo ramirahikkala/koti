@@ -31,6 +31,8 @@ from src.config import (
     SETPOINT_OUTPUT,
     BATHROOM_TEMP_SENSOR,
     BATHROOM_THERMOSTAT_URL,
+    KHH_TEMP_SENSOR,
+    KHH_THERMOSTAT_URL,
     ELECTRICITY_VAT_MULTIPLIER,
 )
 from src.ha_client import (
@@ -48,6 +50,7 @@ from src.temperature_logic import (
     should_central_heating_run,
 )
 from src.control import run_control
+from src.background_tasks import get_sensor_temperature, calculate_price_adjusted_temperature
 from src.heating_logger import get_decisions, get_decisions_by_date
 from src.background_tasks import (
     warm_cache,
@@ -101,21 +104,26 @@ def start_cache_warmer_once():
 # Helper Functions
 # =============================================================================
 
-def _get_bathroom_thermostat_status(current_price):
-    """Get bathroom thermostat status for API response.
+def _get_thermostat_status(sensor_id: str, thermostat_url: str, thermostat_name: str, current_price: float):
+    """Get thermostat status for API response.
+    
+    Args:
+        sensor_id: HA sensor entity ID
+        thermostat_url: Shelly TRV URL
+        thermostat_name: Human-readable name
+        current_price: Current electricity price in c/kWh
     
     Returns:
         dict with raw_temp, adjustment, adjusted_temp, configured, sensor, url
-        or None if not configured
     """
-    if not BATHROOM_THERMOSTAT_URL or not BATHROOM_TEMP_SENSOR:
+    if not thermostat_url or not sensor_id:
         return {
             "configured": False,
-            "sensor": BATHROOM_TEMP_SENSOR,
-            "url": BATHROOM_THERMOSTAT_URL
+            "sensor": sensor_id,
+            "url": thermostat_url
         }
     
-    raw_temp = get_bathroom_raw_temperature()
+    raw_temp = get_sensor_temperature(sensor_id, thermostat_name)
     
     if raw_temp is None or current_price is None:
         return {
@@ -123,23 +131,28 @@ def _get_bathroom_thermostat_status(current_price):
             "raw_temp": raw_temp,
             "adjustment": None,
             "adjusted_temp": None,
-            "sensor": BATHROOM_TEMP_SENSOR,
-            "url": BATHROOM_THERMOSTAT_URL
+            "sensor": sensor_id,
+            "url": thermostat_url
         }
     
     adjustment = (current_price - 5) / 5
     # Cap adjustment to ±1°C
     adjustment = max(-1.0, min(1.0, adjustment))
-    adjusted_temp = calculate_bathroom_adjusted_temperature(raw_temp, current_price)
+    adjusted_temp = calculate_price_adjusted_temperature(raw_temp, current_price)
     
     return {
         "configured": True,
         "raw_temp": raw_temp,
         "adjustment": adjustment,
         "adjusted_temp": adjusted_temp,
-        "sensor": BATHROOM_TEMP_SENSOR,
-        "url": BATHROOM_THERMOSTAT_URL
+        "sensor": sensor_id,
+        "url": thermostat_url
     }
+
+
+def _get_bathroom_thermostat_status(current_price):
+    """Get bathroom thermostat status for API response (deprecated - use _get_thermostat_status)."""
+    return _get_thermostat_status(BATHROOM_TEMP_SENSOR, BATHROOM_THERMOSTAT_URL, "bathroom", current_price)
 
 
 # =============================================================================
@@ -331,7 +344,10 @@ def api_status():
                     "decision": central_heating_decision
                 }
             },
-            "bathroom_thermostat": _get_bathroom_thermostat_status(current_price),
+            "thermostats": {
+                "bathroom": _get_thermostat_status(BATHROOM_TEMP_SENSOR, BATHROOM_THERMOSTAT_URL, "bathroom", current_price),
+                "khh": _get_thermostat_status(KHH_TEMP_SENSOR, KHH_THERMOSTAT_URL, "KHH", current_price)
+            },
             "config": {
                 "base_temperature_fallback": BASE_TEMPERATURE_FALLBACK,
                 "base_temperature_input": BASE_TEMPERATURE_INPUT,

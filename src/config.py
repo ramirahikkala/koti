@@ -82,9 +82,14 @@ PRICE_ALWAYS_ON_THRESHOLD = float(os.getenv("PRICE_ALWAYS_ON_THRESHOLD", "5.0"))
 # =============================================================================
 HEALTHCHECK_URL = os.getenv("HEALTHCHECK_URL")  # Optional healthcheck ping URL
 
-# Bathroom radiator thermostat - sends temperature from HA sensor to Shelly TRV
-BATHROOM_TEMP_SENSOR = os.getenv("BATHROOM_TEMP_SENSOR", "")  # e.g., sensor.adjusted_kylppari
+# Price-adjusted thermostats - sends temperature from HA sensor to Shelly TRV
+# Bathroom radiator thermostat
+BATHROOM_TEMP_SENSOR = os.getenv("BATHROOM_TEMP_SENSOR", "")  # e.g., sensor.ruuvitag_ace9_temperature
 BATHROOM_THERMOSTAT_URL = os.getenv("BATHROOM_THERMOSTAT_URL", "")  # e.g., http://192.168.86.32/ext_t?temp=
+
+# KHH radiator thermostat
+KHH_TEMP_SENSOR = os.getenv("KHH_TEMP_SENSOR", "")  # e.g., sensor.kodari_sbht_203c_25b4_temperature
+KHH_THERMOSTAT_URL = os.getenv("KHH_THERMOSTAT_URL", "")  # e.g., http://192.168.86.31/ext_t?temp=
 
 # =============================================================================
 # Timezone

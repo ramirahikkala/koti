@@ -16,6 +16,7 @@ from .config import (
     MAX_SHUTOFF_HOURS,
     PRICE_ALWAYS_ON_THRESHOLD,
     BATHROOM_THERMOSTAT_URL,
+    KHH_THERMOSTAT_URL,
 )
 from .ha_client import (
     get_base_temperature,
@@ -32,7 +33,10 @@ from .temperature_logic import (
     should_central_heating_run,
     log_heating_decision,
 )
-from .background_tasks import send_temperature_to_bathroom_thermostat
+from .background_tasks import (
+    send_temperature_to_bathroom_thermostat,
+    send_temperature_to_khh_thermostat,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,13 +141,21 @@ def run_control():
                 logger.warning("Could not retrieve daily prices for central heating control")
                 logger.info("=" * 60)
         
-        # Bathroom thermostat control (if configured)
+        # Price-adjusted thermostats control
         if BATHROOM_THERMOSTAT_URL:
             logger.info("")
             logger.info("=" * 60)
             logger.info("Bathroom Thermostat Control")
             logger.info("=" * 60)
             send_temperature_to_bathroom_thermostat()
+            logger.info("=" * 60)
+        
+        if KHH_THERMOSTAT_URL:
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("KHH Thermostat Control")
+            logger.info("=" * 60)
+            send_temperature_to_khh_thermostat()
             logger.info("=" * 60)
         
         # Ping healthcheck to indicate successful completion
