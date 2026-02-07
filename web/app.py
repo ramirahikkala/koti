@@ -50,13 +50,12 @@ from src.temperature_logic import (
     should_central_heating_run,
 )
 from src.control import run_control
-from src.background_tasks import get_sensor_temperature, calculate_price_adjusted_temperature
-from src.heating_logger import get_decisions, get_decisions_by_date
 from src.background_tasks import (
+    get_sensor_temperature, 
+    calculate_price_adjusted_temperature,
     warm_cache,
-    get_bathroom_raw_temperature,
-    calculate_bathroom_adjusted_temperature,
 )
+from src.heating_logger import get_decisions, get_decisions_by_date
 
 
 # =============================================================================
