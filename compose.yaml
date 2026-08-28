@@ -1,0 +1,10 @@
+services:
+  heating-controller:
+    build: .
+    container_name: heating-controller
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - TZ=Europe/Helsinki
+    volumes:
+      - ./zones.yaml:/app/zones.yaml:ro

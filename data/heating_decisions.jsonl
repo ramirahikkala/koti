@@ -1,4 +1,0 @@
-{"timestamp": "2025-12-25T08:30:50.010743+02:00", "decision": "HEAT", "price": 3.39, "reason": "Price 3.39 c/kWh < threshold 5.00 c/kWh (always on)"}
-{"timestamp": "2025-12-25T08:30:50.011100+02:00", "decision": "BLOCK", "price": 6.29, "reason": "In top-24 expensive quarters (rank ~11, price 6.29 c/kWh)"}
-{"timestamp": "2025-12-25T08:30:50.011948+02:00", "decision": "HEAT", "price": 0.78, "reason": "Price 0.78 c/kWh < threshold 5.00 c/kWh (always on)"}
-{"timestamp": "2025-12-25T08:30:50.012266+02:00", "decision": "BLOCK", "price": 9.23, "reason": "In top-24 expensive quarters (rank ~1, price 9.23 c/kWh)"}

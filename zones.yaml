@@ -1,0 +1,40 @@
+# Heating zone configuration. Re-read on every control cycle - edits need no restart.
+#
+# Two levels:
+#   boiler  - level 1, on/off, price-driven blocking of the electric boiler
+#   rooms   - level 2, one entry per room (control: trv | onoff)
+
+boiler:
+  enabled: true
+  switch_entity: switch.shelly1minig3_5432045dd3f0_switch_0
+  inverted: true                 # switch ON = boiler blocked
+  max_shutoff_hours: 6.0
+  price_always_on_threshold: 5.0  # c/kWh - below this the boiler is never blocked
+
+rooms:
+  defaults:
+    price_low_threshold: 10.0     # c/kWh where the room setpoint adjustment is 0
+    temp_variation: 0.5           # max +/- setpoint shift (degC)
+
+  items:
+    - id: olohuone
+      control: onoff
+      temp_sensor: sensor.sisa
+      base_temp_entity: input_number.sisalampoasetus   # optional; HA input_number
+      base_temp_fallback: 21.0
+      switch_entity: switch.shelly1minig3_5432044efb74_switch_0
+      requests_boiler_heat: true  # forces the boiler on when this room wants heat
+
+    # TRV rooms: the HA rest_command makes the LAN call to the Shelly TRV.
+    # Add these to HA configuration.yaml first (see README).
+    - id: kylpyhuone
+      control: trv
+      temp_sensor: sensor.ruuvitag_ace9_temperature
+      trv_ext_temp_service: rest_command.kylpyhuone_trv_ext_temp
+      requests_boiler_heat: false
+
+    - id: khh
+      control: trv
+      temp_sensor: sensor.kodari_sbht_203c_25b4_temperature
+      trv_ext_temp_service: rest_command.khh_trv_ext_temp
+      requests_boiler_heat: false
