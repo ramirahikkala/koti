@@ -51,10 +51,10 @@ footprint, MQTT as the integration bus. It deliberately ignores how things are w
 ╔══════════════════╪═══════ HOME ══════════╪═══ suljettu verkko, vain ulos ════╗
 ║                  │                       │                                   ║
 ║  ┌───────────────┴────────┐        ┌─────┴──────┐                            ║
-║  │  ESP32  (ESPHome)      │        │  selain /   │                           ║
+║  │  ESP32 (OpenMQTTGw)    │        │  selain /   │                           ║
 ║  │  BLE → MQTT -silta      │        │  puhelin    │                          ║
 ║  │  1–3 nodea kattavuuteen│        └────────────┘                            ║
-║  │  BTHome + RuuviTag      │                                                 ║
+║  │  auto-decode+discovery │                                                  ║
 ║  └───▲───────────▲────────┘                                                  ║
 ║  BLE │           │ BLE                                                       ║
 ║ ┌────┴─────┐ ┌───┴──────────┐                                                ║
@@ -119,3 +119,24 @@ takaisin, se saa viimeisimmän komennon/tilan jonka se missasi.
 **Varauma:** Gen2/Gen3-Shellyissä (esim. `shelly1minig3`) MQTT on vankka. Gen1-laitteissa
 (mahdollisesti vanhat TRV:t) MQTT on rajallisempi — siksi TRV voi jäädä suoraksi HTTP:ksi
 tai vaihtua Gen2:een.
+
+## Koti-gateway (ESP32): mikä firmware
+
+BLE-laitteet (RuuviTag, Shelly BLU) tarvitsevat jonkin kuuntelemaan paikan päällä. Kolme
+vaihtoehtoa, jotka eroavat juuri sen suhteen tarvitseeko uusi laite ESP:n uudelleenkonffausta:
+
+| Firmware | Uusi BLE-laite | Toimii pilvi-HA + suljettu verkko |
+|---|---|---|
+| ESPHome **Bluetooth Proxy** | nolla konffia (ESP = tyhmä rele, HA parsii) | **ei** — vaatii ESPHome natiivi-API:n (HA → ESP sisään); ei toimi MQTT:n yli |
+| ESPHome **eksplisiittiset sensorit** | ESP:n yaml-editointi + OTA per laite, per ESP | kyllä (outbound MQTT) |
+| **OpenMQTTGateway** | **nolla konffia** tuetuille tyypeille (ESP dekoodaa + HA-discovery) | **kyllä** (outbound MQTT) |
+
+**Valinta: OpenMQTTGateway.** ESP32-firmware, dekoodaa natiivisti RuuviTagit + BTHome (Shelly
+BLU) + monta muuta, julkaisee MQTT:hen HA-discoveryllä. Uusi tunnetun tyypin laite: paristo
+sisään → ilmestyy HA:han itsestään. Vain outbound MQTT. Konffi web-UI:sta, ei uudelleenkääntöä.
+
+Varaumat: salattu BTHome (osa Shelly BLU:ista) tarvitsee bind key:n kerran per laite;
+salaamaton on automaattinen. Aidosti tuntematon laitetyyppi → firmware-päivitys (harvinaista).
+
+ESPHome BT-proxy olisi vielä helpompi (täysi nollakonffi), mutta se vaatisi tunnelin kotiin
+(HA ottaa yhteyden ESP:hen) — mikä tappaa "ei mitään kotona" -idean.
