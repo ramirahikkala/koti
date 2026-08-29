@@ -1,0 +1,121 @@
+# Target architecture (north star)
+
+This is the **end-state** we're aiming for: Home Assistant in the cloud, a minimal home
+footprint, MQTT as the integration bus. It deliberately ignores how things are wired today —
+`CUTOVER.md` covers the migration path from the current setup.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                             EXTERNAL SERVICES                                 │
+│     api.spot-hinta.fi  (sähköhinnat)              hc-ping.com  (watchdog)     │
+└──────────▲───────────────────────────────────────────────▲───────────────────┘
+           │ HTTPS pull, 15 min                            │ HTTPS ping
+           │                                               │
+╔══════════╪═══════════════ CLOUD  —  Hetzner VM ══════════╪═══════════════════╗
+║          │                                               │                   ║
+║  ┌───────┴───────────────────────────────────────────────┴───────────────┐   ║
+║  │                       heating-controller  (v2)                         │   ║
+║  │   APScheduler :00/:15/:30/:45 → run_cycle():                           │   ║
+║  │     • lue huone- & ulkolämmöt          ┐                               │   ║
+║  │     • lue perus-setpointit             │  MQTT sub                     │   ║
+║  │     • päätä: kattila on/off,           │                               │   ║
+║  │       per-huone setpoint / TRV-lämpö   ┘                               │   ║
+║  │     • komenna releet + TRV:t           ┐  MQTT pub                     │   ║
+║  │     • julkaise lasketut arvot          ┘  (HA discovery)               │   ║
+║  │   zones.yaml  (kattila + huoneet, luetaan joka sykli)                  │   ║
+║  └───────────────────────────┬──────────────────────────────────────────┘   ║
+║                              │ MQTT  (localhost:1883)                        ║
+║   ┌──────────────────────────┴───────┐         ┌──────────────────────────┐  ║
+║   │        Mosquitto  (broker)       │◄───────►│     Home Assistant       │  ║
+║   │   :1883  cloud-local             │  MQTT   │  • entity registry       │  ║
+║   │   :8883  TLS, WAN (vain tämä     │  disc.  │  • automaatiot           │  ║
+║   │          auki kotiverkolle)      │         │  • dashboard / mobiili   │  ║
+║   └──────────────▲───────────────────┘         │  • number-helperit =     │  ║
+║                  │                             │    perus-setpointit      │  ║
+║                  │                             └───────────┬──────────────┘  ║
+║                  │                                         │ SQL             ║
+║                  │                         ┌───────────────┴────┐ ┌────────┐ ║
+║                  │                         │ PostgreSQL "possu" │◄┤Grafana │ ║
+║                  │                         │ (HA recorder)      │ └───┬────┘ ║
+║                  │                         └────────────────────┘     │      ║
+║                  │              ┌─────────────────┐                    │      ║
+║                  │              │      Caddy      │◄── HA UI ──────────┘      ║
+║                  │              │  reverse proxy  │◄── Grafana                ║
+║                  │              │  TLS            │                          ║
+║                  │              └────────▲────────┘                          ║
+╚══════════════════╪═══════════════════════╪═══════════════════════════════════╝
+                   │ MQTT / TLS :8883      │ HTTPS
+                   │ (outbound only)       │ ha.ketunmetsa.fi
+        ═══════════╪═══════════════════════╪═══════════ INTERNET ══════════════
+                   │                       │
+╔══════════════════╪═══════ HOME ══════════╪═══ suljettu verkko, vain ulos ════╗
+║                  │                       │                                   ║
+║  ┌───────────────┴────────┐        ┌─────┴──────┐                            ║
+║  │  ESP32  (ESPHome)      │        │  selain /   │                           ║
+║  │  BLE → MQTT -silta      │        │  puhelin    │                          ║
+║  │  1–3 nodea kattavuuteen│        └────────────┘                            ║
+║  │  BTHome + RuuviTag      │                                                 ║
+║  └───▲───────────▲────────┘                                                  ║
+║  BLE │           │ BLE                                                       ║
+║ ┌────┴─────┐ ┌───┴──────────┐                                                ║
+║ │RuuviTagit│ │Shelly H&T BLU│   paristokäyttöiset BLE-beaconit               ║
+║ └──────────┘ └──────────────┘                                                ║
+║                                                                             ║
+║  ┌──────────────────────────────────────────────┐                           ║
+║  │  Shelly-releet  +  Shelly-TRV:t              │  WiFi, natiivi MQTT-client ║
+║  │  kattila / huonelämmittimet / patteriventtiilit ──► Mosquitto :8883 (ulos)║
+║  └──────────────────────────────────────────────┘                           ║
+║                                                                             ║
+║   Ei palvelinta. Ei HA:ta. Ei SSD:tä. Vain ESP32:t + Shellyt seinälaturissa.║
+╚═════════════════════════════════════════════════════════════════════════════╝
+```
+
+## Idea
+
+- **MQTT-broker on väylä.** HA ja lämmitysohjain ovat molemmat vain sen asiakkaita. Ohjain ei
+  tarvitse HA:ta ohjaukseen — se lukee sensorit ja perus-setpointit brokerista ja julkaisee
+  komennot + lasketut arvot brokeriin. HA näkee kaiken discoveryn kautta ja hoitaa näytön +
+  historian.
+
+- **Kotona nolla palvelinta.** ESP32(t) hoitaa BLE→MQTT (RuuviTag, Shelly BLU). WiFi-Shellyt
+  puhuvat MQTT:tä suoraan pilveen. Kaikki **ulospäin, TLS :8883** — kotiverkkoon ei avata
+  mitään sisään.
+
+- **Tailscale poistuu datapolusta.** Ei enää hyppykonetta laitteiden ja ohjaimen väliin.
+  (Voit pitää sen VM:n SSH:hon / hätäyhteytenä kotiin, mutta se ei ole arkkitehtuurissa.)
+
+- **Perus-setpointit = HA number-helperit**, jotka HA julkaisee MQTT:hen → säädät lämpötilaa
+  HA:n käyttöliittymästä kuten ennenkin, mutta ohjain lukee sen väylältä.
+
+- **Grafana + Postgres** on jo pystyssä → lasketut arvot (`heating_boiler_decision`, per-huone
+  setpointit, hinnat) valuvat HA recorderin kautta samaan kantaan, chartattavissa suoraan.
+
+- **Vikatilanteet:** nettikatko kotona → Shellyt jäävät viimeiseen tilaan, sensoridata
+  katkeaa kunnes yhteys palaa; mitään ei tarvitse konffata uusiksi. VM alas → koko homma
+  seisoo (hyväksytty kompromissi tässä mittakaavassa; `hc-ping` hälyttää).
+
+## Miksi MQTT ei vaadi kotiverkon avaamista
+
+MQTT ei ole pollaava, mutta lopputulos on se: **laite avaa yhteyden ulospäin, komennot tulevat
+takaisin samaa putkea.**
+
+1. Shelly avaa **ulospäin TCP-yhteyden** brokeriin (`mqtt.hetzner:8883`) ja **pitää sen auki**
+   (keepalive-ping ~30–60 s välein pitää NAT/palomuuritilan elossa).
+2. Sen yhden auki olevan yhteyden yli viestit kulkevat **molempiin suuntiin**:
+   - Shelly → broker: julkaisee tilansa (`shelly-boiler/status/switch:0`)
+   - broker → Shelly: työntää komennot topiceihin joihin Shelly on subscribannut
+3. Kun ohjain haluaa kytkeä kattilan, se julkaisee komennon brokeriin → broker työntää sen
+   **heti** alas Shellyn jo auki olevaa yhteyttä. Ei pollausväliä, ei viivettä.
+
+Kotiverkon tarvitsee sallia vain **outbound** portti 8883 VM:n IP:hen (yleensä oletuksena
+sallittu). Ei port forwardia, ei VPN:ää, ei sisääntulevaa mitään.
+
+Vertailu nykyiseen: HA:n Shelly-integraatio avaa WebSocketin *Shellyyn päin*
+(`ws://192.168.86.x/rpc`) → sisääntuleva → vaatii tunnelin. MQTT kääntää suunnan.
+
+Retained-viestit + QoS hoitavat "laite oli hetken offline" -tilanteen: kun Shelly yhdistää
+takaisin, se saa viimeisimmän komennon/tilan jonka se missasi.
+
+**Varauma:** Gen2/Gen3-Shellyissä (esim. `shelly1minig3`) MQTT on vankka. Gen1-laitteissa
+(mahdollisesti vanhat TRV:t) MQTT on rajallisempi — siksi TRV voi jäädä suoraksi HTTP:ksi
+tai vaihtua Gen2:een.
