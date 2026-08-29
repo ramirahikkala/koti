@@ -34,7 +34,7 @@ def trv_room(**kw) -> RoomConfig:
         id="kylpy",
         control=RoomControl.TRV,
         temp_sensor="sensor.t",
-        trv_ext_temp_service="rest_command.kylpy_ext",
+        trv_ext_temp_url="http://trv.test/ext_t?temp=",
     )
     return RoomConfig.model_validate(base | kw)
 
@@ -72,20 +72,31 @@ class TestOnOff:
 
 
 class TestTrv:
-    def test_expensive_reports_warmer(self, fake_ha):
+    def test_expensive_reports_warmer(self, fake_ha, httpx_mock):
+        httpx_mock.add_response(url="http://trv.test/ext_t?temp=21.0")
         fake_ha.states["sensor.t"] = 20.0
         r = strategy_for(RoomControl.TRV).apply(trv_room(), ctx(15.0), fake_ha, dry_run=False)
         assert r.trv_temp == 21.0  # 20 + (15-5)/5 = +2.0, capped to +1.0
         assert r.heat_demand is False
-        assert fake_ha.service_calls == [("rest_command", "kylpy_ext", {"temp": 21.0})]
+        assert r.actuated is True
 
-    def test_cheap_reports_colder(self, fake_ha):
+    def test_cheap_reports_colder(self, fake_ha, httpx_mock):
+        httpx_mock.add_response(url="http://trv.test/ext_t?temp=19.0")
         fake_ha.states["sensor.t"] = 20.0
         r = strategy_for(RoomControl.TRV).apply(trv_room(), ctx(0.0), fake_ha, dry_run=False)
         assert r.trv_temp == 19.0  # (0-5)/5 = -1.0
         assert r.heat_demand is True
 
+    def test_actuation_failure_is_not_fatal(self, fake_ha, httpx_mock, monkeypatch):
+        monkeypatch.setattr("heating.shelly.time.sleep", lambda _: None)
+        httpx_mock.add_response(
+            url="http://trv.test/ext_t?temp=20.5", status_code=500, is_reusable=True
+        )
+        fake_ha.states["sensor.t"] = 20.0
+        r = strategy_for(RoomControl.TRV).apply(trv_room(), ctx(7.5), fake_ha, dry_run=False)
+        assert r.actuated is False
+
     def test_dry_run(self, fake_ha):
         fake_ha.states["sensor.t"] = 20.0
-        strategy_for(RoomControl.TRV).apply(trv_room(), ctx(10.0), fake_ha, dry_run=True)
-        assert fake_ha.service_calls == []
+        r = strategy_for(RoomControl.TRV).apply(trv_room(), ctx(10.0), fake_ha, dry_run=True)
+        assert r.actuated is False

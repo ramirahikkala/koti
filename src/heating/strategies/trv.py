@@ -7,6 +7,7 @@ import structlog
 from heating.ha.client import HAClient
 from heating.logic.trv import trv_fake_temperature
 from heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
+from heating.shelly import send_ext_temp
 from heating.strategies.base import register
 
 log = structlog.get_logger(__name__)
@@ -29,13 +30,12 @@ class TrvStrategy:
         trv_temp = round(trv_fake_temperature(raw, ctx.current_price), 1)
         adjustment = round(trv_temp - raw, 2)
 
-        assert room.trv_ext_temp_service is not None  # guaranteed by RoomConfig validation
-        domain, _, service = room.trv_ext_temp_service.partition(".")
+        assert room.trv_ext_temp_url is not None  # guaranteed by RoomConfig validation
         actuated = False
         if dry_run:
-            log.info("trv.dry_run", zone=room.id, service=room.trv_ext_temp_service, temp=trv_temp)
+            log.info("trv.dry_run", zone=room.id, url=room.trv_ext_temp_url, temp=trv_temp)
         else:
-            actuated = ha.call_service(domain, service, {"temp": trv_temp})
+            actuated = send_ext_temp(room.trv_ext_temp_url, trv_temp)
 
         return RoomResult(
             zone_id=room.id,

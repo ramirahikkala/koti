@@ -10,18 +10,10 @@ not HA OS -> no add-ons.
 1. Stand up **Mosquitto** as its own container - see `deploy/mosquitto/` (compose + config +
    step-by-step). Then add the MQTT integration in HA (Settings -> Devices & Services ->
    Add Integration -> MQTT, broker `127.0.0.1:1883`).
-2. Add a `rest_command` per `trv` room to `configuration.yaml`, then restart HA:
-   ```yaml
-   rest_command:
-     kylpyhuone_trv_ext_temp:
-       url: "http://192.168.86.32/ext_t?temp={{ temp }}"
-       method: GET
-     khh_trv_ext_temp:
-       url: "http://192.168.86.31/ext_t?temp={{ temp }}"
-       method: GET
-   ```
-   (Verify the TRV IPs — v1 had them in `.env`/compose, not tracked here.)
-3. Long-lived access token → `HA_API_TOKEN`.
+2. Long-lived access token → `HA_API_TOKEN`.
+3. Give the two Shelly TRVs DHCP reservations and put their IPs in `zones.yaml`
+   (`trv_ext_temp_url`). The controller calls `http://<trv-ip>/ext_t?temp=` directly over
+   Tailscale — no HA `rest_command` needed. v1 used `192.168.86.32` / `.31`; verify.
 
 ## Deploy (Hetzner VM)
 
@@ -49,7 +41,7 @@ not HA OS -> no add-ons.
 1. Stop v1: `docker compose down` in the v1 stack (`ha-temperature-controller` +
    `ha-temperature-web`).
 2. Set `DRY_RUN=false` in v2's `.env`, `docker compose up -d`.
-3. Watch one live cycle: HA switch states change, TRV `rest_command`s fire, MQTT entities
+3. Watch one live cycle: HA switch states change, TRV `ext_t` HTTP calls fire, MQTT entities
    update, healthcheck pings. Kill the container → `binary_sensor.heating_controller_online`
    goes `off` within the LWT interval.
 4. Merge `v2` → `main` in this repo.

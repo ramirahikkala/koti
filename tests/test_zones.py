@@ -19,7 +19,7 @@ rooms:
     - id: kylpy
       control: trv
       temp_sensor: sensor.b
-      trv_ext_temp_service: rest_command.b
+      trv_ext_temp_url: "http://trv-b/t?temp="
       temp_variation: 1.0
 """
 
@@ -66,7 +66,7 @@ rooms:
       control: trv
       temp_sensor: sensor.a
 """
-    with pytest.raises(ZonesError, match="trv_ext_temp_service"):
+    with pytest.raises(ZonesError, match="trv_ext_temp_url"):
         load_zones(write(tmp_path, text))
 
 
@@ -74,8 +74,8 @@ def test_duplicate_room_id(tmp_path):
     text = """
 rooms:
   items:
-    - {id: x, control: trv, temp_sensor: s, trv_ext_temp_service: rest_command.x}
-    - {id: x, control: trv, temp_sensor: s, trv_ext_temp_service: rest_command.x}
+    - {id: x, control: trv, temp_sensor: s, trv_ext_temp_url: "http://trv-x/t?temp="}
+    - {id: x, control: trv, temp_sensor: s, trv_ext_temp_url: "http://trv-x/t?temp="}
 """
     with pytest.raises(ZonesError, match="duplicate"):
         load_zones(write(tmp_path, text))
@@ -88,7 +88,7 @@ rooms:
     - id: x
       control: trv
       temp_sensor: s
-      trv_ext_temp_service: rest_command.x
+      trv_ext_temp_url: "http://trv-x/t?temp="
       typo_field: 1
 """
     with pytest.raises(ZonesError):

@@ -4,6 +4,16 @@ from typing import Any
 
 import pytest
 
+from heating.settings import Settings
+
+
+@pytest.fixture(autouse=True)
+def _ignore_repo_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep tests from picking up the developer's real .env / HEALTHCHECK_URL / token."""
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    for var in ("HA_API_TOKEN", "HEALTHCHECK_URL", "DRY_RUN", "OUTDOOR_TEMP_SENSOR"):
+        monkeypatch.delenv(var, raising=False)
+
 
 class FakeHA:
     """Stand-in for heating.ha.client.HAClient."""

@@ -48,20 +48,24 @@ rooms:
     - id: kylpy
       control: trv
       temp_sensor: sensor.kylpy
-      trv_ext_temp_service: rest_command.kylpy
+      trv_ext_temp_url: "http://trv-kylpy.test/ext_t?temp="
 """
 
 
-def test_full_cycle_actuates_and_publishes(tmp_path, fake_ha):
+def test_full_cycle_actuates_and_publishes(tmp_path, fake_ha, httpx_mock):
     (tmp_path / "z.yaml").write_text(ZONES)
     fake_ha.states.update({"sensor.olo": 19.0, "sensor.kylpy": 22.0})
+    # kylpy 22.0 + (8-5)/5 = 22.6
+    httpx_mock.add_response(url="http://trv-kylpy.test/ext_t?temp=22.6")
     prices = FakePrices(8.0, [8.0] * 96)
     pub = CapturePublisher()
 
     run_cycle(settings(tmp_path), fake_ha, prices, pub)
 
     assert ("switch.olo", True) in fake_ha.switch_calls
-    assert any(d == "rest_command" and s == "kylpy" for d, s, _ in fake_ha.service_calls)
+    assert [str(r.url) for r in httpx_mock.get_requests()] == [
+        "http://trv-kylpy.test/ext_t?temp=22.6"
+    ]
     # boiler: price 8 >= always_on 5, not enough prices to be "top" -> would run anyway;
     # olo requests heat and is below setpoint -> boiler on -> inverted switch OFF
     assert ("switch.boiler", False) in fake_ha.switch_calls
@@ -72,9 +76,10 @@ def test_full_cycle_actuates_and_publishes(tmp_path, fake_ha):
     assert isinstance(boiler, BoilerDecision) and boiler.should_run is True
 
 
-def test_forced_on_overrides_price_block(tmp_path, fake_ha):
+def test_forced_on_overrides_price_block(tmp_path, fake_ha, httpx_mock):
     (tmp_path / "z.yaml").write_text(ZONES)
     fake_ha.states.update({"sensor.olo": 19.0, "sensor.kylpy": 22.0})
+    httpx_mock.add_response()  # TRV call, value not important here
     # current price is the single most expensive quarter -> would block
     prices = FakePrices(50.0, [10.0] * 95 + [50.0])
     pub = CapturePublisher()

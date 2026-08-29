@@ -48,12 +48,15 @@ type = new module + `register(...)` + import in `strategies/__init__.py`.
 | `ha/client.py` | HA REST (httpx): `get_state[_float]`, `call_service`, `set_switch` (with verify loop) |
 | `ha/price.py` | Spot-Hinta `/JustNow` + `/TodayAndDayForward`, returns c/kWh incl. tax |
 | `ha/publish.py` | MQTT discovery config + retained state + availability/LWT |
+| `shelly.py` | direct HTTP to a Shelly TRV's `ext_t` endpoint (TRV control only) |
 | `logic/*` | pure functions, ported verbatim from v1 `temperature_logic.py` / `background_tasks.py` |
 
 ## Conventions
 
-- All device I/O goes through Home Assistant (REST for reads/services, MQTT for publishing).
-  Never call Shelly LAN devices directly — TRV LAN calls are HA `rest_command`s.
+- Sensor reads and relay (`switch`) control go through Home Assistant (REST); computed values
+  are published to HA over MQTT. The one exception: TRV control is a direct HTTP GET from the
+  controller to the Shelly's `ext_t` endpoint (`heating/shelly.py`), over the VM's Tailscale
+  link — the controller runs where the LAN is reachable, so the HA round-trip buys nothing.
 - `logic/` stays pure and fully unit-tested. Thresholds are passed in as keyword args, never
   read from globals.
 - Ruff-formatted, line length 100. `mypy --strict` should stay clean.

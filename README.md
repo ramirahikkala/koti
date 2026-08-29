@@ -27,15 +27,14 @@ Adding a room = one entry in `zones.yaml`. The file is re-read every cycle — n
 
 ### Home Assistant
 
-1. Install the **Mosquitto broker** add-on and create an MQTT user for the controller.
-2. For each `trv` room, add a `rest_command` to `configuration.yaml` (HA makes the LAN call):
-   ```yaml
-   rest_command:
-     kylpyhuone_trv_ext_temp:
-       url: "http://192.168.86.32/ext_t?temp={{ temp }}"
-       method: GET
-   ```
-3. Create a long-lived access token for `HA_API_TOKEN`.
+1. Run an MQTT broker reachable from the controller and create an MQTT user
+   (`deploy/mosquitto/` has a ready compose stack; add the MQTT integration in HA).
+2. Create a long-lived access token for `HA_API_TOKEN`.
+
+TRV rooms are controlled by a **direct HTTP call** from the controller to the Shelly's
+`ext_t` endpoint (over the VM's Tailscale link) — no HA config needed. Set `trv_ext_temp_url`
+in `zones.yaml` and give each TRV a DHCP reservation so its IP stays put. Relay control
+(boiler, on/off rooms) goes through HA `switch` services; sensor values are read from HA.
 
 ### Controller
 

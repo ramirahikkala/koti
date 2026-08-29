@@ -39,8 +39,8 @@ class RoomConfig(BaseModel):
     base_temp_entity: str | None = None
     base_temp_fallback: float = 21.0
 
-    # trv
-    trv_ext_temp_service: str | None = None
+    # trv - direct HTTP GET to the Shelly's ext-temp endpoint (temp is appended to the URL)
+    trv_ext_temp_url: str | None = None
 
     # per-room threshold overrides (filled from RoomDefaults at load time)
     price_low_threshold: float = 10.0
@@ -50,8 +50,8 @@ class RoomConfig(BaseModel):
     def _check_control_fields(self) -> RoomConfig:
         if self.control is RoomControl.ONOFF and not self.switch_entity:
             raise ValueError(f"room {self.id!r}: control 'onoff' requires 'switch_entity'")
-        if self.control is RoomControl.TRV and not self.trv_ext_temp_service:
-            raise ValueError(f"room {self.id!r}: control 'trv' requires 'trv_ext_temp_service'")
+        if self.control is RoomControl.TRV and not self.trv_ext_temp_url:
+            raise ValueError(f"room {self.id!r}: control 'trv' requires 'trv_ext_temp_url'")
         return self
 
 

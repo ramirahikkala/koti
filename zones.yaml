@@ -25,16 +25,16 @@ rooms:
       switch_entity: switch.shelly1minig3_5432044efb74_switch_0
       requests_boiler_heat: true  # forces the boiler on when this room wants heat
 
-    # TRV rooms: the HA rest_command makes the LAN call to the Shelly TRV.
-    # Add these to HA configuration.yaml first (see README).
+    # TRV rooms: the controller calls the Shelly TRV's ext-temp endpoint directly over
+    # the VM's Tailscale link. Give each TRV a DHCP reservation so the IP is stable.
     - id: kylpyhuone
       control: trv
       temp_sensor: sensor.ruuvitag_ace9_temperature
-      trv_ext_temp_service: rest_command.kylpyhuone_trv_ext_temp
+      trv_ext_temp_url: "http://192.168.86.32/ext_t?temp="
       requests_boiler_heat: false
 
     - id: khh
       control: trv
       temp_sensor: sensor.kodari_sbht_203c_25b4_temperature
-      trv_ext_temp_service: rest_command.khh_trv_ext_temp
+      trv_ext_temp_url: "http://192.168.86.31/ext_t?temp="
       requests_boiler_heat: false
