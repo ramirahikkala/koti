@@ -4,7 +4,12 @@ Status: v2 code is on branch `v2` (v1 tagged `v1-legacy`). Not yet deployed.
 
 ## Prerequisites on Home Assistant (rpi)
 
-1. Install the **Mosquitto broker** add-on. Create an MQTT user for the controller.
+HA runs as a **container** (`homeassistant/home-assistant:latest`, `network_mode: host`),
+not HA OS -> no add-ons.
+
+1. Stand up **Mosquitto** as its own container - see `deploy/mosquitto/` (compose + config +
+   step-by-step). Then add the MQTT integration in HA (Settings -> Devices & Services ->
+   Add Integration -> MQTT, broker `127.0.0.1:1883`).
 2. Add a `rest_command` per `trv` room to `configuration.yaml`, then restart HA:
    ```yaml
    rest_command:

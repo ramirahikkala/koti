@@ -1,0 +1,19 @@
+# Mosquitto MQTT broker - runs on the rpi next to Home Assistant (HA Container, no add-ons).
+# HA connects locally (127.0.0.1:1883, HA uses network_mode: host).
+# The heating controller on the Hetzner VM connects over Tailscale (<rpi>:1883).
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./config:/mosquitto/config:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
