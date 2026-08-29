@@ -1,0 +1,65 @@
+# BLE -> MQTT gateway node (LilyGO T-Display-S3, headless).
+# Reads specific RuuviTag / BTHome devices over BLE and publishes them to the cloud MQTT
+# broker over TLS. Devices are listed explicitly on purpose — you control exactly which
+# entities appear in HA and under what name.
+#
+# First flash: USB.  `uvx esphome run deploy/esphome/gateway.yaml`
+# After that:  OTA over WiFi from a machine on the same LAN.
+#
+# See README.md for the two-step MAC-discovery flow.
+
+esphome:
+  name: gateway-01
+  friendly_name: BLE Gateway 01
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB              # T-Display-S3
+  framework:
+    type: esp-idf              # needed for reliable MQTT-over-TLS
+
+logger:
+  level: DEBUG
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+mqtt:
+  broker: mqtt.ketunmetsa.fi
+  port: 8883
+  username: gateway
+  password: !secret mqtt_password
+  discovery: true               # publish HA MQTT discovery for the sensors below
+  topic_prefix: gateway-01
+  certificate_authority: !include mqtt-ca.pem
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false               # RuuviTag / BTHome broadcast passively; no need to connect
+  # Step 1 helper: log every advertisement so you can find the RuuviTag MACs.
+  # Comment this block out once the sensors below are configured.
+  on_ble_advertise:
+    then:
+      - lambda: |-
+          ESP_LOGD("scan", "%s  rssi=%d  name='%s'",
+                   x.address_str().c_str(), x.get_rssi(), x.get_name().c_str());
+
+# Step 2: one block per RuuviTag you want. Fill the MAC from the scan log, keep only the
+# measurements you care about, name them exactly as they should appear in HA.
+#
+# sensor:
+#   - platform: ruuvitag
+#     mac_address: "AA:BB:CC:DD:EE:FF"
+#     temperature:
+#       name: "Ulkolämpötila"
+#     humidity:
+#       name: "Ulkokosteus"
+#     pressure:
+#       name: "Ulkoilmanpaine"
+#
+# (If ESPHome complains that 'ruuvi_ble' is not loaded, add an empty `ruuvi_ble:` line.)
