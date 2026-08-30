@@ -51,10 +51,10 @@ footprint, MQTT as the integration bus. It deliberately ignores how things are w
 ╔══════════════════╪═══════ HOME ══════════╪═══ suljettu verkko, vain ulos ════╗
 ║                  │                       │                                   ║
 ║  ┌───────────────┴────────┐        ┌─────┴──────┐                            ║
-║  │  ESP32 (OpenMQTTGw)    │        │  selain /   │                           ║
+║  │  ESP32 (ESPHome)      │        │  selain /   │                            ║
 ║  │  BLE → MQTT -silta      │        │  puhelin    │                          ║
 ║  │  1–3 nodea kattavuuteen│        └────────────┘                            ║
-║  │  auto-decode+discovery │                                                  ║
+║  │  eksplisiittiset yamlit│                                                  ║
 ║  └───▲───────────▲────────┘                                                  ║
 ║  BLE │           │ BLE                                                       ║
 ║ ┌────┴─────┐ ┌───┴──────────┐                                                ║
@@ -131,12 +131,17 @@ vaihtoehtoa, jotka eroavat juuri sen suhteen tarvitseeko uusi laite ESP:n uudell
 | ESPHome **eksplisiittiset sensorit** | ESP:n yaml-editointi + OTA per laite, per ESP | kyllä (outbound MQTT) |
 | **OpenMQTTGateway** | **nolla konffia** tuetuille tyypeille (ESP dekoodaa + HA-discovery) | **kyllä** (outbound MQTT) |
 
-**Valinta: OpenMQTTGateway.** ESP32-firmware, dekoodaa natiivisti RuuviTagit + BTHome (Shelly
-BLU) + monta muuta, julkaisee MQTT:hen HA-discoveryllä. Uusi tunnetun tyypin laite: paristo
-sisään → ilmestyy HA:han itsestään. Vain outbound MQTT. Konffi web-UI:sta, ei uudelleenkääntöä.
+**Valinta (POC:ssa todistettu): ESPHome + eksplisiittiset sensorit.** Config `infra`-repossa:
+`gateways/gateway.yaml`. Syyt:
+- OpenMQTTGateway:lla ei ole T-Display-S3 -buildia (vain geneerinen `esp32s3-dev-c1-ble`).
+- Laiteroster on vakaa → "auto-discovery vs yaml-editti" -ero on pieni.
+- Eksplisiittinen yaml = sinä päätät mikä entiteetti syntyy ja millä nimellä — ei
+  "ilmestyi 40 entiteettiä joista käytän kahta".
 
-Varaumat: salattu BTHome (osa Shelly BLU:ista) tarvitsee bind key:n kerran per laite;
-salaamaton on automaattinen. Aidosti tuntematon laitetyyppi → firmware-päivitys (harvinaista).
+Toteutus: `esp32-s3-devkitc-1`, esp-idf-framework (MQTT-TLS), inline `certificate_authority`
+(ISRG-juuret; `!include` ei parsiudu laitteen mbedtls:llä). RuuviTagit `platform: ruuvitag`,
+Shelly BLU `platform: bthome_receiver` (`dz0ny/esphome-bthome` external component). Uusi
+BLE-laite = yaml-editti + OTA. Useampi node kattavuuteen: kopioi + vaihda `topic_prefix`.
 
-ESPHome BT-proxy olisi vielä helpompi (täysi nollakonffi), mutta se vaatisi tunnelin kotiin
-(HA ottaa yhteyden ESP:hen) — mikä tappaa "ei mitään kotona" -idean.
+ESPHome BT-proxy (täysi nollakonffi) hylättiin: se vaatii ESPHome natiivi-API:n eli tunnelin
+kotiin (HA ottaa yhteyden ESP:hen) — tappaa "ei mitään kotona" -idean.
