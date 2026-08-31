@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from heating.settings import Settings
+from koti.heating.settings import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -16,7 +16,7 @@ def _ignore_repo_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class FakeHA:
-    """Stand-in for heating.ha.client.HAClient."""
+    """Stand-in for koti.ha.client.HAClient."""
 
     def __init__(self, states: dict[str, Any] | None = None) -> None:
         self.states = states or {}

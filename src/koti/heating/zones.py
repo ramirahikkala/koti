@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from heating.models import RoomConfig, ZonesConfig, ZonesFile
+from koti.heating.models import RoomConfig, ZonesConfig, ZonesFile
 
 
 class ZonesError(ValueError):

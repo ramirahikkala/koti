@@ -9,12 +9,12 @@ import structlog
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from heating.control import run_cycle
-from heating.ha.client import HAClient
-from heating.ha.price import PriceClient
-from heating.ha.publish import Publisher
-from heating.logging_setup import configure
-from heating.settings import load_settings
+from koti.common.logging_setup import configure
+from koti.ha.client import HAClient
+from koti.ha.price import PriceClient
+from koti.heating.control import run_cycle
+from koti.heating.publish import Publisher
+from koti.heating.settings import load_settings
 
 log = structlog.get_logger(__name__)
 

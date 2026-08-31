@@ -1,6 +1,6 @@
 """Ported from v1 tests/test_temperature_control.py::TestCentralHeatingControl."""
 
-from heating.logic.boiler import boiler_should_run, price_rank
+from koti.heating.logic.boiler import boiler_should_run, price_rank
 
 MAX_SHUTOFF_HOURS = 6.0
 ALWAYS_ON = 5.0

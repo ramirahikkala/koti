@@ -11,8 +11,8 @@ import json
 import paho.mqtt.client as mqtt
 import structlog
 
-from heating.models import BoilerDecision, ControlContext, RoomResult
-from heating.settings import Settings
+from koti.heating.models import BoilerDecision, ControlContext, RoomResult
+from koti.heating.settings import Settings
 
 log = structlog.get_logger(__name__)
 

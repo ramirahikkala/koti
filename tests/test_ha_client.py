@@ -3,8 +3,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from heating.ha.client import HAClient
-from heating.ha.price import PriceClient
+from koti.ha.client import HAClient
+from koti.ha.price import PriceClient
 
 
 @pytest.fixture

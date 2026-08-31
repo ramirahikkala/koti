@@ -7,16 +7,16 @@ from zoneinfo import ZoneInfo
 
 import structlog
 
-from heating.ha.client import HAClient
-from heating.ha.price import PriceClient
-from heating.ha.publish import Publisher
-from heating.healthcheck import ping
-from heating.logic.boiler import boiler_should_run, price_rank
-from heating.logic.price_stats import average, average_excluding_top_hours
-from heating.models import BoilerDecision, ControlContext, RoomResult, ZonesConfig
-from heating.settings import Settings
-from heating.strategies import strategy_for
-from heating.zones import load_zones
+from koti.common.healthcheck import ping
+from koti.ha.client import HAClient
+from koti.ha.price import PriceClient
+from koti.heating.logic.boiler import boiler_should_run, price_rank
+from koti.heating.logic.price_stats import average, average_excluding_top_hours
+from koti.heating.models import BoilerDecision, ControlContext, RoomResult, ZonesConfig
+from koti.heating.publish import Publisher
+from koti.heating.settings import Settings
+from koti.heating.strategies import strategy_for
+from koti.heating.zones import load_zones
 
 log = structlog.get_logger(__name__)
 

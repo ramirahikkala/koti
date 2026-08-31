@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import structlog
 
-from heating.ha.client import HAClient
-from heating.logic.trv import trv_fake_temperature
-from heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
-from heating.shelly import send_ext_temp
-from heating.strategies.base import register
+from koti.ha.client import HAClient
+from koti.heating.logic.trv import trv_fake_temperature
+from koti.heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
+from koti.heating.shelly import send_ext_temp
+from koti.heating.strategies.base import register
 
 log = structlog.get_logger(__name__)
 

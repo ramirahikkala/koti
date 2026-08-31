@@ -74,4 +74,4 @@ not HA OS -> no add-ons.
 v1's price→setpoint formula never used `PRICE_HIGH_THRESHOLD`. v2 keeps the v1 behaviour
 (linear ramp, slope `temp_variation / price_low_threshold`) and drops the setting. If you
 want a real `price_low` → `price_high` interpolation instead, it's a small change in
-`src/heating/logic/price_adjust.py` + the config model.
+`src/koti/heating/logic/price_adjust.py` + the config model.

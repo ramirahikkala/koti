@@ -1,11 +1,22 @@
-# Heating controller (v2)
+# koti
 
-Price-aware, headless heating controller for Home Assistant. Every 15 minutes it reads
-electricity prices (Spot-Hinta) and room temperatures (HA), then controls two independent
-levels of heating and publishes everything it computes back to HA over MQTT.
+Headless home-automation services. Each is a small Python daemon that uses Home Assistant +
+the MQTT broker as its substrate — no web UI, no database of its own. Shared code
+(`koti.ha`, `koti.common`) lives in the same package; each service is a subpackage.
 
-There is **no web UI** and **no database** — Home Assistant is the display layer and the
-history store.
+Platform (broker, HA, gateways, proxy) lives in the separate `infra` repo.
+
+| Service | |
+|---|---|
+| `koti.heating` | price-aware two-level heating controller (below) |
+
+---
+
+## Heating controller
+
+Every 15 minutes it reads electricity prices (Spot-Hinta) and room temperatures (HA), then
+controls two independent levels of heating and publishes everything it computes back to HA
+over MQTT. HA is the display + history layer.
 
 ## The two levels
 
@@ -71,15 +82,17 @@ uv run mypy               # advisory
 ## Layout
 
 ```
-src/heating/
-  settings.py      env / .env
-  models.py        pydantic config models + runtime dataclasses
-  zones.py         load + validate zones.yaml
-  ha/client.py     HA REST client (httpx)
-  ha/price.py      Spot-Hinta price client
-  ha/publish.py    MQTT discovery publisher
-  logic/           pure functions: price_adjust, boiler, trv, price_stats
-  strategies/      onoff, trv  (registry keyed by control type)
-  control.py       run_cycle()
-  scheduler.py     APScheduler entrypoint (`heating`)
+src/koti/
+  ha/              shared — HA REST client (httpx), Spot-Hinta price client
+  common/          shared — structlog setup, healthcheck ping
+  heating/
+    settings.py    env / .env
+    models.py      pydantic config models + runtime dataclasses
+    zones.py       load + validate zones.yaml
+    publish.py     MQTT discovery publisher (heating_* entities)
+    shelly.py      direct HTTP to a Shelly TRV
+    logic/         pure functions: price_adjust, boiler, trv, price_stats
+    strategies/    onoff, trv  (registry keyed by control type)
+    control.py     run_cycle()
+    scheduler.py   APScheduler entrypoint (`heating` script)
 ```

@@ -1,7 +1,7 @@
 import pytest
 
-from heating.models import RoomControl
-from heating.zones import ZonesError, load_zones
+from koti.heating.models import RoomControl
+from koti.heating.zones import ZonesError, load_zones
 
 VALID = """
 boiler:

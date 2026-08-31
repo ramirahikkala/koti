@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from heating.ha.client import HAClient
-from heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
+from koti.ha.client import HAClient
+from koti.heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
 
 
 class Strategy(Protocol):

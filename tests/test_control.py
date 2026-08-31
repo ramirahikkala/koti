@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from heating.control import run_cycle
-from heating.models import BoilerDecision, ControlContext, RoomResult
-from heating.settings import Settings
+from koti.heating.control import run_cycle
+from koti.heating.models import BoilerDecision, ControlContext, RoomResult
+from koti.heating.settings import Settings
 
 
 class FakePrices:

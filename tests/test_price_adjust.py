@@ -1,6 +1,6 @@
 """Ported from v1 tests/test_temperature_control.py (adjustment + setpoint + linear + edges)."""
 
-from heating.logic.price_adjust import setpoint_temperature, temperature_adjustment
+from koti.heating.logic.price_adjust import setpoint_temperature, temperature_adjustment
 
 LOW = 10.0
 VARIATION = 0.5

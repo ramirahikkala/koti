@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import structlog
 
-from heating.ha.client import HAClient
-from heating.logic.price_adjust import setpoint_temperature
-from heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
-from heating.strategies.base import register
+from koti.ha.client import HAClient
+from koti.heating.logic.price_adjust import setpoint_temperature
+from koti.heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
+from koti.heating.strategies.base import register
 
 log = structlog.get_logger(__name__)
 

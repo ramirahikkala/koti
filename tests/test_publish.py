@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from heating.ha.publish import Publisher
-from heating.models import BoilerDecision, ControlContext, RoomControl, RoomResult
-from heating.settings import Settings
+from koti.heating.models import BoilerDecision, ControlContext, RoomControl, RoomResult
+from koti.heating.publish import Publisher
+from koti.heating.settings import Settings
 
 
 class FakeMqtt:

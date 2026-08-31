@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from heating.models import ControlContext, RoomConfig, RoomControl
-from heating.strategies import strategy_for
+from koti.heating.models import ControlContext, RoomConfig, RoomControl
+from koti.heating.strategies import strategy_for
 
 
 def ctx(price: float) -> ControlContext:
@@ -88,7 +88,7 @@ class TestTrv:
         assert r.heat_demand is True
 
     def test_actuation_failure_is_not_fatal(self, fake_ha, httpx_mock, monkeypatch):
-        monkeypatch.setattr("heating.shelly.time.sleep", lambda _: None)
+        monkeypatch.setattr("koti.heating.shelly.time.sleep", lambda _: None)
         httpx_mock.add_response(
             url="http://trv.test/ext_t?temp=20.5", status_code=500, is_reusable=True
         )
