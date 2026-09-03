@@ -8,10 +8,10 @@ The controller talks only to the broker. No HA token, no LAN access needed.
 
 1. Broker + MQTT integration in HA — `infra/mqtt/` (`mqtt.ketunmetsa.fi:8883` TLS, users
    incl. `heating`). Device onboarding runbook: `koti-devices/DEVICES.md`.
-2. **Sensor topics.** The ESPHome gateway (`koti-devices/gateways/gateway.yaml`) must publish
+2. **Sensor topics.** The ESPHome gateway (`koti-devices/gateways/gateway-01.yaml`) must publish
    each room + outdoor sensor; find its state topic with
    `mosquitto_sub -h mqtt.ketunmetsa.fi -p 8883 -u ha -P '<pw>' -t 'gateway-01/#' -v` and set
-   it as `temp_topic` / `OUTDOOR_TEMP_TOPIC`. gateway.yaml still has placeholder MACs — fix
+   it as `temp_topic` / `OUTDOOR_TEMP_TOPIC`. gateway-01.yaml still has placeholder MACs — fix
    those first.
 3. **Shelly relays** (boiler block + olohuone) onboarded to MQTT per `koti-devices/DEVICES.md`
    ("Generic status update over MQTT" ON so `<prefix>/status/switch:0` is retained). Put the
