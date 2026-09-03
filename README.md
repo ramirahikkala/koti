@@ -41,7 +41,7 @@ Everything is MQTT — the broker + its HA integration live in the `infra` repo;
 gateways / device onboarding runbook in `koti-devices` (`DEVICES.md`). In `zones.yaml`:
 
 - **`temp_topic`** / **`OUTDOOR_TEMP_TOPIC`** — the ESPHome gateway's sensor state topic
-  (`gateway-01/sensor/<slug>/state`). Older than `SENSOR_MAX_AGE_MINUTES` → unavailable.
+  (`koti/sensor/<slug>/state`). Older than `SENSOR_MAX_AGE_MINUTES` → unavailable.
 - **`switch_topic`** — a Shelly relay's MQTT prefix. The controller publishes `on`/`off` to
   `<prefix>/command/switch:0` and verifies against the retained `<prefix>/status/switch:0`.
 - **`trv_ext_temp_topic`** — the topic the Shelly TRV reads as its external temperature.

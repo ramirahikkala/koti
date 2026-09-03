@@ -70,7 +70,7 @@ type = new module + `register(...)` + import in `strategies/__init__.py`.
 
 - **Sensor reads come from the MQTT bus** (`bus.get_float(topic)`), not HA. `zones.yaml`
   `temp_topic` / `OUTDOOR_TEMP_TOPIC` are broker topics (ESPHome gateway publishes BLE
-  sensors under `gateway-01/sensor/<slug>/state`). A value older than
+  sensors under `koti/sensor/<slug>/state`). A value older than
   `SENSOR_MAX_AGE_MINUTES` counts as unavailable → that room does not actuate.
 - **Base setpoints are controller-owned** MQTT `number` entities (`heating_<room>_base_temp`),
   declared from `zones.yaml` `base_temp:` every cycle. The controller holds the value

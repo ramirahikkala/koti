@@ -41,7 +41,7 @@ class RoomConfig(BaseModel):
 
     id: str
     control: RoomControl
-    temp_topic: str  # MQTT state topic, e.g. gateway-01/sensor/khh_lampotila/state
+    temp_topic: str  # MQTT state topic, e.g. koti/sensor/kylpyhuone/state
     enabled: bool = True
     requests_boiler_heat: bool = False
 

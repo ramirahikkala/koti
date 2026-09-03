@@ -5,11 +5,12 @@
 #   rooms   - level 2, one entry per room (control: trv | onoff)
 #
 # Everything is MQTT. Topic conventions:
-#   temp_topic       - ESPHome gateway sensor state, gateway-01/sensor/<slug>/state
+#   temp_topic       - ESPHome gateway sensor state, koti/sensor/<slug>/state (all gateways
+#                      share the `koti` prefix, so a topic doesn't change if the tag moves node)
 #   switch_topic     - Shelly relay prefix; controller uses <prefix>/command|status/<component>
 #   trv_ext_temp_topic - topic the Shelly TRV reads as its external temperature
 # Discover a topic with:
-#   mosquitto_sub -h mqtt.ketunmetsa.fi -p 8883 -u ha -P '<pw>' -t '#' -v
+#   mosquitto_sub -h mqtt.ketunmetsa.fi -p 8883 -u ha -P '<pw>' -t 'koti/#' -v
 
 boiler:
   enabled: true
@@ -27,7 +28,7 @@ rooms:
   items:
     - id: olohuone
       control: onoff
-      temp_topic: gateway-01/sensor/olohuone_lampotila/state
+      temp_topic: koti/sensor/sisa_alakerta/state
       switch_topic: shelly1minig3-5432044efb74
       requests_boiler_heat: true  # forces the boiler on when this room wants heat
       base_temp:                  # controller-owned MQTT number (HA shows a slider)
@@ -41,12 +42,12 @@ rooms:
     # the broker; the exact topic depends on its MQTT device id.
     - id: kylpyhuone
       control: trv
-      temp_topic: gateway-01/sensor/kylpyhuone_lampotila/state
+      temp_topic: koti/sensor/kylpyhuone/state
       trv_ext_temp_topic: shellies/shelly-trv-kylpyhuone/ext_t/0
       requests_boiler_heat: false
 
     - id: khh
       control: trv
-      temp_topic: gateway-01/sensor/khh_lampotila/state
+      temp_topic: koti/sensor/khh/state
       trv_ext_temp_topic: shellies/shelly-trv-khh/ext_t/0
       requests_boiler_heat: false
