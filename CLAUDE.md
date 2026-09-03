@@ -6,7 +6,8 @@ Guidance for Claude Code when working in this repository.
 
 `koti` — a monorepo of headless home-automation services. One Python package `src/koti/`:
 `koti.ha` + `koti.common` are shared; each service is a subpackage. Only service so far:
-`koti.heating`. Platform (broker, HA, gateways, Caddy) is the separate `infra` repo.
+`koti.heating`. Platform (broker, HA, Caddy) is the separate `infra` repo; ESP node firmware
+(BLE→MQTT gateways, the desk display) is the `koti-devices` repo.
 
 ## Heating controller — overview
 

@@ -129,8 +129,8 @@ vaihtoehtoa, jotka eroavat juuri sen suhteen tarvitseeko uusi laite ESP:n uudell
 | ESPHome **eksplisiittiset sensorit** | ESP:n yaml-editointi + OTA per laite, per ESP | kyllä (outbound MQTT) |
 | **OpenMQTTGateway** | **nolla konffia** tuetuille tyypeille (ESP dekoodaa + HA-discovery) | **kyllä** (outbound MQTT) |
 
-**Valinta (POC:ssa todistettu): ESPHome + eksplisiittiset sensorit.** Config `infra`-repossa:
-`gateways/gateway.yaml`. Syyt:
+**Valinta (POC:ssa todistettu): ESPHome + eksplisiittiset sensorit.** Config
+`koti-devices`-repossa: `gateways/gateway.yaml`. Syyt:
 - OpenMQTTGateway:lla ei ole T-Display-S3 -buildia (vain geneerinen `esp32s3-dev-c1-ble`).
 - Laiteroster on vakaa → "auto-discovery vs yaml-editti" -ero on pieni.
 - Eksplisiittinen yaml = sinä päätät mikä entiteetti syntyy ja millä nimellä — ei
