@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import structlog
 
-from koti.ha.client import HAClient
 from koti.heating.logic.price_adjust import setpoint_temperature
 from koti.heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
+from koti.heating.publish import MqttBus
 from koti.heating.strategies.base import register
 
 log = structlog.get_logger(__name__)
@@ -14,13 +14,10 @@ log = structlog.get_logger(__name__)
 
 class OnOffStrategy:
     def apply(
-        self, room: RoomConfig, ctx: ControlContext, ha: HAClient, *, dry_run: bool
+        self, room: RoomConfig, ctx: ControlContext, bus: MqttBus, *, dry_run: bool
     ) -> RoomResult:
-        base = None
-        if room.base_temp_entity:
-            base = ha.get_state_float(room.base_temp_entity)
-        if base is None:
-            base = room.base_temp_fallback
+        assert room.base_temp is not None  # guaranteed by RoomConfig validation
+        base = bus.number_value(f"heating_{room.id}_base_temp")
 
         setpoint, adjustment = setpoint_temperature(
             ctx.current_price,
@@ -29,7 +26,7 @@ class OnOffStrategy:
             max_variation=room.temp_variation,
         )
 
-        temp = ha.get_state_float(room.temp_sensor)
+        temp = bus.get_float(room.temp_topic)
         if temp is None:
             return RoomResult(
                 zone_id=room.id,
@@ -37,16 +34,16 @@ class OnOffStrategy:
                 heat_demand=False,
                 adjustment=adjustment,
                 setpoint=setpoint,
-                detail=f"temp sensor {room.temp_sensor} unavailable - not actuating",
+                detail=f"temp topic {room.temp_topic} unavailable - not actuating",
             )
 
         heat = temp < setpoint
         actuated = False
-        assert room.switch_entity is not None  # guaranteed by RoomConfig validation
+        assert room.switch_topic is not None  # guaranteed by RoomConfig validation
         if dry_run:
-            log.info("onoff.dry_run", zone=room.id, would_set=room.switch_entity, on=heat)
+            log.info("onoff.dry_run", zone=room.id, would_set=room.switch_topic, on=heat)
         else:
-            actuated = ha.set_switch(room.switch_entity, heat)
+            actuated = bus.set_switch(room.switch_topic, heat, component=room.switch_component)
 
         return RoomResult(
             zone_id=room.id,

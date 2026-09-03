@@ -2,30 +2,35 @@
 
 Status: v2 code is on branch `v2` (v1 tagged `v1-legacy`). Not yet deployed.
 
-## Prerequisites on Home Assistant (rpi)
+## Prerequisites — all on the MQTT bus (`infra` repo)
 
-HA runs as a **container** (`homeassistant/home-assistant:latest`, `network_mode: host`),
-not HA OS -> no add-ons.
+The controller talks only to the broker. No HA token, no LAN access needed.
 
-1. Stand up **Mosquitto** as its own container - see `deploy/mosquitto/` (compose + config +
-   step-by-step). Then add the MQTT integration in HA (Settings -> Devices & Services ->
-   Add Integration -> MQTT, broker `127.0.0.1:1883`).
-2. Long-lived access token → `HA_API_TOKEN`.
-3. Give the two Shelly TRVs DHCP reservations and put their IPs in `zones.yaml`
-   (`trv_ext_temp_url`). The controller calls `http://<trv-ip>/ext_t?temp=` directly over
-   Tailscale — no HA `rest_command` needed. v1 used `192.168.86.32` / `.31`; verify.
+1. Broker + MQTT integration in HA — `infra/mqtt/` (`mqtt.ketunmetsa.fi:8883` TLS, users
+   incl. `heating`). See `infra/DEVICES.md`.
+2. **Sensor topics.** The ESPHome gateway (`infra/gateways/gateway.yaml`) must publish each
+   room + outdoor sensor; find its state topic with
+   `mosquitto_sub -h mqtt.ketunmetsa.fi -p 8883 -u ha -P '<pw>' -t 'gateway-01/#' -v` and set
+   it as `temp_topic` / `OUTDOOR_TEMP_TOPIC`. gateway.yaml still has placeholder MACs — fix
+   those first.
+3. **Shelly relays** (boiler block + olohuone) onboarded to MQTT per `infra/DEVICES.md`
+   ("Generic status update over MQTT" ON so `<prefix>/status/switch:0` is retained). Put the
+   `<model>-<mac>` prefix in `zones.yaml` as `switch_topic`.
+4. **Shelly TRVs** (kylpyhuone, khh): enable MQTT on each, point it at the broker, and set
+   `trv_ext_temp_topic` in `zones.yaml` to the topic it reads as external temperature (depends
+   on the TRV's MQTT device id — verify with `mosquitto_sub`).
 
 ## Deploy (Hetzner VM)
 
 1. `git pull` + `git checkout v2` in this repo on the VM.
 2. `cp .env.example .env`, fill in:
-   - `HA_API_TOKEN`
-   - `MQTT_HOST` = the rpi's Tailscale address/name, `MQTT_USERNAME` / `MQTT_PASSWORD`
-   - `OUTDOOR_TEMP_SENSOR`, `HEALTHCHECK_URL` (reuse v1's healthchecks.io UUID)
+   - `MQTT_HOST=mqtt.ketunmetsa.fi`, `MQTT_PORT=8883`, `MQTT_TLS=true`,
+     `MQTT_USERNAME=heating` / `MQTT_PASSWORD`
+   - `OUTDOOR_TEMP_TOPIC`, `HEALTHCHECK_URL` (reuse v1's healthchecks.io UUID)
    - `DRY_RUN=true` for now
-3. Check `zones.yaml` — entity IDs for the TRV rooms (`kylpyhuone`, `khh`) and their
-   `temp_sensor`s. v1's real `.env` did **not** contain the bathroom/KHH sensor vars, so
-   confirm these against HA before trusting them.
+3. Check `zones.yaml` — `temp_topic` for every room and `base_temp:` for `olohuone`. The
+   base setpoint that was `input_number.sisalampoasetus` is now the controller-owned
+   `number.heating_olohuone_base_temp` (HA slider); set its starting value via `base_temp.default`.
 4. `docker compose up -d --build` (runs as a 3rd stack alongside v1).
 
 ## Shadow period (3–5 days)
@@ -41,9 +46,10 @@ not HA OS -> no add-ons.
 1. Stop v1: `docker compose down` in the v1 stack (`ha-temperature-controller` +
    `ha-temperature-web`).
 2. Set `DRY_RUN=false` in v2's `.env`, `docker compose up -d`.
-3. Watch one live cycle: HA switch states change, TRV `ext_t` HTTP calls fire, MQTT entities
-   update, healthcheck pings. Kill the container → `binary_sensor.heating_controller_online`
-   goes `off` within the LWT interval.
+3. Watch one live cycle: Shelly relays flip (`<prefix>/command/switch:0`, confirmed by
+   `switch.set` in the logs), TRV ext-temp published, MQTT entities update, healthcheck
+   pings. Kill the container → `binary_sensor.heating_controller_online` goes `off` within
+   the LWT interval.
 4. Merge `v2` → `main` in this repo.
 
 ## infra repo (`../infra`, separate git repo)
@@ -51,19 +57,21 @@ not HA OS -> no add-ons.
 - `ha-proxy/Caddyfile` has a `temp.ketunmetsa.fi { reverse_proxy ha-temperature-web:5000 }`
   block — that is the **v1 dashboard**. After cutover: delete the block, reload Caddy
   (`docker exec caddy-proxy caddy reload --config /etc/caddy/Caddyfile`).
-- No other infra file references the heating controller. The v1 controller container reached
-  HA via the public `https://ha.ketunmetsa.fi` URL, no special docker network — v2 default
-  matches.
+- `ha-cloud/config/configuration.yaml` declares the Shelly relays as `mqtt.switch` entities
+  (Gen3 has no HA discovery). HA and the controller both publish to the same
+  `<prefix>/command/switch:0` — harmless; the controller re-asserts every 15 min.
 
 ## Datastore / dashboards
 
-- "Possu" = `../infra/ha_postgresql` — Postgres 16 (`home_assistant` DB) + **Grafana**,
-  already running on HA's recorder database.
-- v2 has no application database. Published MQTT entities land in the HA recorder → Postgres,
-  so **Grafana can chart them directly**. Lovelace/ApexCharts is optional.
+- v2 has no application database. Everything it computes is published as MQTT entities that
+  land in the cloud HA recorder (SQLite) — view + chart them in HA's own History/Logbook or a
+  Lovelace ApexCharts card.
+- Grafana + the Postgres recorder are **retired** (Grafana went unused; `../infra/ha_postgresql`
+  stays only for other services). Cloud HA keeps its default SQLite recorder — tune
+  `recorder:` (`purge_keep_days`, `exclude:` for noisy BLE attributes) instead.
 - Entities to build panels from:
   - per room: `sensor.heating_<id>_setpoint`, `_price_adjustment`, `_trv_temp` (trv only),
-    `binary_sensor.heating_<id>_demand`
+    `binary_sensor.heating_<id>_demand`, `number.heating_<id>_base_temp`
   - boiler: `sensor.heating_boiler_decision` (+ `reason`/`rank`/`forced`/`price` attrs),
     `binary_sensor.heating_boiler_blocked`
   - global: `sensor.heating_current_price`, `sensor.heating_price_avg_today`,

@@ -5,7 +5,7 @@ from koti.heating.zones import ZonesError, load_zones
 
 VALID = """
 boiler:
-  switch_entity: switch.boiler
+  switch_topic: shelly-boiler
 rooms:
   defaults:
     price_low_threshold: 8.0
@@ -13,13 +13,14 @@ rooms:
   items:
     - id: olohuone
       control: onoff
-      temp_sensor: sensor.a
-      switch_entity: switch.a
+      temp_topic: gw/a/state
+      switch_topic: shelly-a
+      base_temp: {default: 21.0}
       requests_boiler_heat: true
     - id: kylpy
       control: trv
-      temp_sensor: sensor.b
-      trv_ext_temp_url: "http://trv-b/t?temp="
+      temp_topic: gw/b/state
+      trv_ext_temp_topic: shellies/trv-b/ext_t/0
       temp_variation: 1.0
 """
 
@@ -32,7 +33,7 @@ def write(tmp_path, text):
 
 def test_valid_config(tmp_path):
     cfg = load_zones(write(tmp_path, VALID))
-    assert cfg.boiler is not None and cfg.boiler.switch_entity == "switch.boiler"
+    assert cfg.boiler is not None and cfg.boiler.switch_topic == "shelly-boiler"
     assert [r.id for r in cfg.rooms] == ["olohuone", "kylpy"]
     olo, kylpy = cfg.rooms
     assert olo.control is RoomControl.ONOFF
@@ -52,9 +53,22 @@ rooms:
   items:
     - id: x
       control: onoff
-      temp_sensor: sensor.a
+      temp_topic: gw/a/state
 """
-    with pytest.raises(ZonesError, match="switch_entity"):
+    with pytest.raises(ZonesError, match="switch_topic"):
+        load_zones(write(tmp_path, text))
+
+
+def test_onoff_requires_base_temp(tmp_path):
+    text = """
+rooms:
+  items:
+    - id: x
+      control: onoff
+      temp_topic: gw/a/state
+      switch_topic: shelly-x
+"""
+    with pytest.raises(ZonesError, match="base_temp"):
         load_zones(write(tmp_path, text))
 
 
@@ -64,9 +78,9 @@ rooms:
   items:
     - id: x
       control: trv
-      temp_sensor: sensor.a
+      temp_topic: gw/a/state
 """
-    with pytest.raises(ZonesError, match="trv_ext_temp_url"):
+    with pytest.raises(ZonesError, match="trv_ext_temp_topic"):
         load_zones(write(tmp_path, text))
 
 
@@ -74,8 +88,8 @@ def test_duplicate_room_id(tmp_path):
     text = """
 rooms:
   items:
-    - {id: x, control: trv, temp_sensor: s, trv_ext_temp_url: "http://trv-x/t?temp="}
-    - {id: x, control: trv, temp_sensor: s, trv_ext_temp_url: "http://trv-x/t?temp="}
+    - {id: x, control: trv, temp_topic: s, trv_ext_temp_topic: t}
+    - {id: x, control: trv, temp_topic: s, trv_ext_temp_topic: t}
 """
     with pytest.raises(ZonesError, match="duplicate"):
         load_zones(write(tmp_path, text))
@@ -87,8 +101,8 @@ rooms:
   items:
     - id: x
       control: trv
-      temp_sensor: s
-      trv_ext_temp_url: "http://trv-x/t?temp="
+      temp_topic: s
+      trv_ext_temp_topic: t
       typo_field: 1
 """
     with pytest.raises(ZonesError):

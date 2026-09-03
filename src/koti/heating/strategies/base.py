@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from koti.ha.client import HAClient
 from koti.heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
+from koti.heating.publish import MqttBus
 
 
 class Strategy(Protocol):
     def apply(
-        self, room: RoomConfig, ctx: ControlContext, ha: HAClient, *, dry_run: bool
+        self, room: RoomConfig, ctx: ControlContext, bus: MqttBus, *, dry_run: bool
     ) -> RoomResult: ...
 
 

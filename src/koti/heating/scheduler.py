@@ -4,43 +4,76 @@ from __future__ import annotations
 
 import signal
 import sys
+import time
 
 import structlog
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from koti.common.logging_setup import configure
-from koti.ha.client import HAClient
 from koti.ha.price import PriceClient
-from koti.heating.control import run_cycle
-from koti.heating.publish import Publisher
-from koti.heating.settings import load_settings
+from koti.heating.control import run_cycle, sync_numbers
+from koti.heating.publish import MqttBus
+from koti.heating.settings import Settings, load_settings
+from koti.heating.zones import load_zones
 
 log = structlog.get_logger(__name__)
+
+_SETTLE_SECONDS = 3.0  # let retained + freshly-broadcast values land before the first cycle
+
+
+def _connect_bus(bus: MqttBus, retries: int = 5) -> bool:
+    delay = 2.0
+    for attempt in range(1, retries + 1):
+        try:
+            bus.connect()
+            return True
+        except Exception:
+            log.warning("mqtt.connect_failed", attempt=attempt)
+            if attempt < retries:
+                time.sleep(delay)
+                delay = min(delay * 2, 30.0)
+    return False
+
+
+def _register_bus_topics(bus: MqttBus, settings: Settings) -> None:
+    bus.watch(settings.outdoor_temp_topic)
+    try:
+        cfg = load_zones(settings.zones_file)
+    except Exception:
+        log.exception("mqtt.zones_unreadable_at_startup")
+        return
+    for room in cfg.rooms:
+        bus.watch(room.temp_topic)
+        if room.switch_topic:
+            bus.watch_switch(room.switch_topic, room.switch_component)
+    if cfg.boiler is not None:
+        bus.watch_switch(cfg.boiler.switch_topic, cfg.boiler.switch_component)
+    # Declare the number entities now (not just in run_cycle) so their retained state lands
+    # during the settle window and the first cycle uses the user's last value, not default.
+    sync_numbers(cfg, bus)
 
 
 def main() -> None:
     configure()
     settings = load_settings()
 
-    ha = HAClient(settings.ha_url, settings.ha_api_token)
     prices = PriceClient(
         settings.spot_hinta_api_justnow,
         settings.spot_hinta_api_url,
         timezone=settings.timezone,
     )
 
-    publisher: Publisher | None = None
-    try:
-        publisher = Publisher(settings)
-        publisher.connect()
-    except Exception:
-        log.exception("mqtt.connect_failed - continuing without publishing")
-        publisher = None
+    bus = MqttBus(settings)
+    if _connect_bus(bus):
+        _register_bus_topics(bus, settings)
+        time.sleep(_SETTLE_SECONDS)
+    else:
+        log.error("mqtt.unavailable - cycles will run but sensor reads + actuation will fail")
 
     def cycle() -> None:
         try:
-            run_cycle(settings, ha, prices, publisher)
+            run_cycle(settings, prices, bus)
         except Exception:
             log.exception("cycle.unhandled")
 
@@ -58,9 +91,7 @@ def main() -> None:
     def shutdown(*_: object) -> None:
         log.info("shutdown")
         scheduler.shutdown(wait=False)
-        if publisher is not None:
-            publisher.close()
-        ha.close()
+        bus.close()
         prices.close()
         sys.exit(0)
 

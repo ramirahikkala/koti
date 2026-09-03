@@ -3,6 +3,7 @@ from __future__ import annotations
 from koti.heating.control import run_cycle
 from koti.heating.models import BoilerDecision, ControlContext, RoomResult
 from koti.heating.settings import Settings
+from tests.conftest import FakeBus
 
 
 class FakePrices:
@@ -19,21 +20,13 @@ class FakePrices:
         return self._t
 
 
-class CapturePublisher:
-    def __init__(self):
-        self.calls = []
-
-    def publish(self, ctx, rooms, boiler, *, price_avg, price_avg_ex_top):
-        self.calls.append((ctx, rooms, boiler))
-
-
 def settings(tmp_path, **kw) -> Settings:
-    return Settings(ha_api_token="x", zones_file=str(tmp_path / "z.yaml"), **kw)  # type: ignore[call-arg]
+    return Settings(zones_file=str(tmp_path / "z.yaml"), **kw)  # type: ignore[call-arg]
 
 
 ZONES = """
 boiler:
-  switch_entity: switch.boiler
+  switch_topic: shelly-boiler
   inverted: true
   price_always_on_threshold: 5.0
   max_shutoff_hours: 6.0
@@ -41,82 +34,78 @@ rooms:
   items:
     - id: olo
       control: onoff
-      temp_sensor: sensor.olo
-      switch_entity: switch.olo
-      base_temp_fallback: 21.0
+      temp_topic: gw/olo/state
+      switch_topic: shelly-olo
+      base_temp: {default: 21.0}
       requests_boiler_heat: true
     - id: kylpy
       control: trv
-      temp_sensor: sensor.kylpy
-      trv_ext_temp_url: "http://trv-kylpy.test/ext_t?temp="
+      temp_topic: gw/kylpy/state
+      trv_ext_temp_topic: shellies/trv-kylpy/ext_t/0
 """
 
 
-def test_full_cycle_actuates_and_publishes(tmp_path, fake_ha, httpx_mock):
+def _bus(**temps) -> FakeBus:
+    return FakeBus(values=dict(temps))
+
+
+def test_full_cycle_actuates_and_publishes(tmp_path):
     (tmp_path / "z.yaml").write_text(ZONES)
-    fake_ha.states.update({"sensor.olo": 19.0, "sensor.kylpy": 22.0})
-    # kylpy 22.0 + (8-5)/5 = 22.6
-    httpx_mock.add_response(url="http://trv-kylpy.test/ext_t?temp=22.6")
+    bus = _bus(**{"gw/olo/state": 19.0, "gw/kylpy/state": 22.0})
     prices = FakePrices(8.0, [8.0] * 96)
-    pub = CapturePublisher()
 
-    run_cycle(settings(tmp_path), fake_ha, prices, pub)
+    run_cycle(settings(tmp_path), prices, bus)
 
-    assert ("switch.olo", True) in fake_ha.switch_calls
-    assert [str(r.url) for r in httpx_mock.get_requests()] == [
-        "http://trv-kylpy.test/ext_t?temp=22.6"
-    ]
-    # boiler: price 8 >= always_on 5, not enough prices to be "top" -> would run anyway;
-    # olo requests heat and is below setpoint -> boiler on -> inverted switch OFF
-    assert ("switch.boiler", False) in fake_ha.switch_calls
+    assert ("shelly-olo", True, "switch:0") in bus.switch_calls
+    # kylpy 22.0 + (8-5)/5 = 22.6
+    assert bus.raw_publishes == [("shellies/trv-kylpy/ext_t/0", "22.6")]
+    # boiler: price 8 >= always_on 5 -> runs; inverted -> switch OFF
+    assert ("shelly-boiler", False, "switch:0") in bus.switch_calls
 
-    ctx, rooms, boiler = pub.calls[0]
+    ctx, rooms, boiler = bus.publish_calls[0]
     assert isinstance(ctx, ControlContext)
     assert {r.zone_id for r in rooms} == {"olo", "kylpy"}
     assert isinstance(boiler, BoilerDecision) and boiler.should_run is True
+    assert "heating_olo_base_temp" in bus.registered_numbers
 
 
-def test_forced_on_overrides_price_block(tmp_path, fake_ha, httpx_mock):
+def test_forced_on_overrides_price_block(tmp_path):
     (tmp_path / "z.yaml").write_text(ZONES)
-    fake_ha.states.update({"sensor.olo": 19.0, "sensor.kylpy": 22.0})
-    httpx_mock.add_response()  # TRV call, value not important here
+    bus = _bus(**{"gw/olo/state": 19.0, "gw/kylpy/state": 22.0})
     # current price is the single most expensive quarter -> would block
     prices = FakePrices(50.0, [10.0] * 95 + [50.0])
-    pub = CapturePublisher()
 
-    run_cycle(settings(tmp_path), fake_ha, prices, pub)
+    run_cycle(settings(tmp_path), prices, bus)
 
     # olo below setpoint and requests heat -> boiler forced on -> inverted switch OFF
-    assert ("switch.boiler", False) in fake_ha.switch_calls
-    _, _, boiler = pub.calls[0]
+    assert ("shelly-boiler", False, "switch:0") in bus.switch_calls
+    _, _, boiler = bus.publish_calls[0]
     assert boiler.forced is True and boiler.should_run is True
 
 
-def test_dry_run_no_actuation(tmp_path, fake_ha):
+def test_dry_run_no_actuation(tmp_path):
     (tmp_path / "z.yaml").write_text(ZONES)
-    fake_ha.states.update({"sensor.olo": 19.0, "sensor.kylpy": 22.0})
-    run_cycle(
-        settings(tmp_path, dry_run=True), fake_ha, FakePrices(8.0, [8.0] * 96), CapturePublisher()
-    )
-    assert fake_ha.switch_calls == []
-    assert fake_ha.service_calls == []
+    bus = _bus(**{"gw/olo/state": 19.0, "gw/kylpy/state": 22.0})
+    run_cycle(settings(tmp_path, dry_run=True), FakePrices(8.0, [8.0] * 96), bus)
+    assert bus.switch_calls == []
+    assert bus.raw_publishes == []
 
 
-def test_no_price_aborts(tmp_path, fake_ha):
+def test_no_price_aborts(tmp_path):
     (tmp_path / "z.yaml").write_text(ZONES)
-    pub = CapturePublisher()
-    run_cycle(settings(tmp_path), fake_ha, FakePrices(None, []), pub)
-    assert pub.calls == []
-    assert fake_ha.switch_calls == []
+    bus = _bus()
+    run_cycle(settings(tmp_path), FakePrices(None, []), bus)
+    assert bus.publish_calls == []
+    assert bus.switch_calls == []
 
 
-def test_bad_zones_aborts(tmp_path, fake_ha):
+def test_bad_zones_aborts(tmp_path):
     (tmp_path / "z.yaml").write_text(
-        "rooms:\n  items:\n    - id: x\n      control: onoff\n      temp_sensor: s\n"
+        "rooms:\n  items:\n    - id: x\n      control: onoff\n      temp_topic: s\n"
     )
-    pub = CapturePublisher()
-    run_cycle(settings(tmp_path), fake_ha, FakePrices(8.0, [8.0] * 96), pub)
-    assert pub.calls == []
+    bus = _bus()
+    run_cycle(settings(tmp_path), FakePrices(8.0, [8.0] * 96), bus)
+    assert bus.publish_calls == []
 
 
 def test_result_objects_shape():

@@ -3,11 +3,19 @@
 # Two levels:
 #   boiler  - level 1, on/off, price-driven blocking of the electric boiler
 #   rooms   - level 2, one entry per room (control: trv | onoff)
+#
+# Everything is MQTT. Topic conventions:
+#   temp_topic       - ESPHome gateway sensor state, gateway-01/sensor/<slug>/state
+#   switch_topic     - Shelly relay prefix; controller uses <prefix>/command|status/<component>
+#   trv_ext_temp_topic - topic the Shelly TRV reads as its external temperature
+# Discover a topic with:
+#   mosquitto_sub -h mqtt.ketunmetsa.fi -p 8883 -u ha -P '<pw>' -t '#' -v
 
 boiler:
   enabled: true
-  switch_entity: switch.shelly1minig3_5432045dd3f0_switch_0
-  inverted: true                 # switch ON = boiler blocked
+  switch_topic: shelly1minig3-5432045dd3f0
+  # switch_component: "switch:0"  # default
+  inverted: true                 # relay ON = boiler blocked
   max_shutoff_hours: 6.0
   price_always_on_threshold: 5.0  # c/kWh - below this the boiler is never blocked
 
@@ -19,22 +27,26 @@ rooms:
   items:
     - id: olohuone
       control: onoff
-      temp_sensor: sensor.sisa
-      base_temp_entity: input_number.sisalampoasetus   # optional; HA input_number
-      base_temp_fallback: 21.0
-      switch_entity: switch.shelly1minig3_5432044efb74_switch_0
+      temp_topic: gateway-01/sensor/olohuone_lampotila/state
+      switch_topic: shelly1minig3-5432044efb74
       requests_boiler_heat: true  # forces the boiler on when this room wants heat
+      base_temp:                  # controller-owned MQTT number (HA shows a slider)
+        default: 21.0
+        min: 15.0
+        max: 25.0
+        step: 0.5
 
-    # TRV rooms: the controller calls the Shelly TRV's ext-temp endpoint directly over
-    # the VM's Tailscale link. Give each TRV a DHCP reservation so the IP is stable.
+    # Shelly TRV: the controller publishes a price-adjusted "external temperature" to the
+    # TRV's MQTT topic (was a direct HTTP GET). Each TRV needs MQTT enabled and pointed at
+    # the broker; the exact topic depends on its MQTT device id.
     - id: kylpyhuone
       control: trv
-      temp_sensor: sensor.ruuvitag_ace9_temperature
-      trv_ext_temp_url: "http://192.168.86.32/ext_t?temp="
+      temp_topic: gateway-01/sensor/kylpyhuone_lampotila/state
+      trv_ext_temp_topic: shellies/shelly-trv-kylpyhuone/ext_t/0
       requests_boiler_heat: false
 
     - id: khh
       control: trv
-      temp_sensor: sensor.kodari_sbht_203c_25b4_temperature
-      trv_ext_temp_url: "http://192.168.86.31/ext_t?temp="
+      temp_topic: gateway-01/sensor/khh_lampotila/state
+      trv_ext_temp_topic: shellies/shelly-trv-khh/ext_t/0
       requests_boiler_heat: false

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import structlog
 
-from koti.ha.client import HAClient
 from koti.heating.logic.trv import trv_fake_temperature
 from koti.heating.models import ControlContext, RoomConfig, RoomControl, RoomResult
-from koti.heating.shelly import send_ext_temp
+from koti.heating.publish import MqttBus
 from koti.heating.strategies.base import register
 
 log = structlog.get_logger(__name__)
@@ -15,27 +14,27 @@ log = structlog.get_logger(__name__)
 
 class TrvStrategy:
     def apply(
-        self, room: RoomConfig, ctx: ControlContext, ha: HAClient, *, dry_run: bool
+        self, room: RoomConfig, ctx: ControlContext, bus: MqttBus, *, dry_run: bool
     ) -> RoomResult:
-        raw = ha.get_state_float(room.temp_sensor)
+        raw = bus.get_float(room.temp_topic)
         if raw is None:
             return RoomResult(
                 zone_id=room.id,
                 control=RoomControl.TRV,
                 heat_demand=False,
                 adjustment=0.0,
-                detail=f"temp sensor {room.temp_sensor} unavailable - not actuating",
+                detail=f"temp topic {room.temp_topic} unavailable - not actuating",
             )
 
         trv_temp = round(trv_fake_temperature(raw, ctx.current_price), 1)
         adjustment = round(trv_temp - raw, 2)
 
-        assert room.trv_ext_temp_url is not None  # guaranteed by RoomConfig validation
+        assert room.trv_ext_temp_topic is not None  # guaranteed by RoomConfig validation
         actuated = False
         if dry_run:
-            log.info("trv.dry_run", zone=room.id, url=room.trv_ext_temp_url, temp=trv_temp)
+            log.info("trv.dry_run", zone=room.id, topic=room.trv_ext_temp_topic, temp=trv_temp)
         else:
-            actuated = send_ext_temp(room.trv_ext_temp_url, trv_temp)
+            actuated = bus.publish_raw(room.trv_ext_temp_topic, f"{trv_temp:.1f}")
 
         return RoomResult(
             zone_id=room.id,

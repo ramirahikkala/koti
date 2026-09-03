@@ -8,12 +8,11 @@ from zoneinfo import ZoneInfo
 import structlog
 
 from koti.common.healthcheck import ping
-from koti.ha.client import HAClient
 from koti.ha.price import PriceClient
 from koti.heating.logic.boiler import boiler_should_run, price_rank
 from koti.heating.logic.price_stats import average, average_excluding_top_hours
 from koti.heating.models import BoilerDecision, ControlContext, RoomResult, ZonesConfig
-from koti.heating.publish import Publisher
+from koti.heating.publish import MqttBus
 from koti.heating.settings import Settings
 from koti.heating.strategies import strategy_for
 from koti.heating.zones import load_zones
@@ -21,14 +20,12 @@ from koti.heating.zones import load_zones
 log = structlog.get_logger(__name__)
 
 
-def build_context(ha: HAClient, prices: PriceClient, settings: Settings) -> ControlContext | None:
+def build_context(bus: MqttBus, prices: PriceClient, settings: Settings) -> ControlContext | None:
     current = prices.current_price()
     if current is None:
         log.error("cycle.no_price")
         return None
-    outdoor = (
-        ha.get_state_float(settings.outdoor_temp_sensor) if settings.outdoor_temp_sensor else None
-    )
+    outdoor = bus.get_float(settings.outdoor_temp_topic)
     return ControlContext(
         now=datetime.now(ZoneInfo(settings.timezone)),
         current_price=current,
@@ -38,15 +35,32 @@ def build_context(ha: HAClient, prices: PriceClient, settings: Settings) -> Cont
     )
 
 
+def sync_numbers(cfg: ZonesConfig, bus: MqttBus) -> None:
+    """(Re)declare the controller-owned base-setpoint number entities. Idempotent - keeps
+    any value a user has already set, so it is safe to call every cycle (picks up rooms
+    added to zones.yaml without a restart)."""
+    for room in cfg.rooms:
+        if room.base_temp is None:
+            continue
+        bus.register_number(
+            f"heating_{room.id}_base_temp",
+            f"{room.id} base setpoint",
+            default=room.base_temp.default,
+            min_value=room.base_temp.min,
+            max_value=room.base_temp.max,
+            step=room.base_temp.step,
+        )
+
+
 def _run_rooms(
-    cfg: ZonesConfig, ctx: ControlContext, ha: HAClient, dry_run: bool
+    cfg: ZonesConfig, ctx: ControlContext, bus: MqttBus, dry_run: bool
 ) -> list[RoomResult]:
     results: list[RoomResult] = []
     for room in cfg.rooms:
         if not room.enabled:
             continue
         try:
-            result = strategy_for(room.control).apply(room, ctx, ha, dry_run=dry_run)
+            result = strategy_for(room.control).apply(room, ctx, bus, dry_run=dry_run)
         except Exception:
             log.exception("room.failed", zone=room.id)
             continue
@@ -56,7 +70,7 @@ def _run_rooms(
 
 
 def _run_boiler(
-    cfg: ZonesConfig, ctx: ControlContext, rooms: list[RoomResult], ha: HAClient, dry_run: bool
+    cfg: ZonesConfig, ctx: ControlContext, rooms: list[RoomResult], bus: MqttBus, dry_run: bool
 ) -> BoilerDecision | None:
     if cfg.boiler is None or not cfg.boiler.enabled:
         return None
@@ -85,19 +99,14 @@ def _run_boiler(
     # inverted: switch ON blocks the boiler; non-inverted: switch ON runs it
     switch_on = (not should_run) if cfg.boiler.inverted else should_run
     if dry_run:
-        log.info("boiler.dry_run", would_set=cfg.boiler.switch_entity, on=switch_on, reason=reason)
+        log.info("boiler.dry_run", would_set=cfg.boiler.switch_topic, on=switch_on, reason=reason)
     else:
-        ha.set_switch(cfg.boiler.switch_entity, switch_on)
+        bus.set_switch(cfg.boiler.switch_topic, switch_on, component=cfg.boiler.switch_component)
     log.info("boiler.done", should_run=should_run, forced=forced, rank=decision.rank, reason=reason)
     return decision
 
 
-def run_cycle(
-    settings: Settings,
-    ha: HAClient,
-    prices: PriceClient,
-    publisher: Publisher | None,
-) -> None:
+def run_cycle(settings: Settings, prices: PriceClient, bus: MqttBus) -> None:
     try:
         cfg = load_zones(settings.zones_file)
     except Exception:
@@ -105,7 +114,9 @@ def run_cycle(
         ping(settings.healthcheck_url, success=False)
         return
 
-    ctx = build_context(ha, prices, settings)
+    sync_numbers(cfg, bus)
+
+    ctx = build_context(bus, prices, settings)
     if ctx is None:
         ping(settings.healthcheck_url, success=False)
         return
@@ -117,22 +128,21 @@ def run_cycle(
         dry_run=settings.dry_run,
     )
 
-    rooms = _run_rooms(cfg, ctx, ha, settings.dry_run)
-    boiler = _run_boiler(cfg, ctx, rooms, ha, settings.dry_run)
+    rooms = _run_rooms(cfg, ctx, bus, settings.dry_run)
+    boiler = _run_boiler(cfg, ctx, rooms, bus, settings.dry_run)
 
-    if publisher is not None:
-        try:
-            publisher.publish(
-                ctx,
-                rooms,
-                boiler,
-                price_avg=average(ctx.daily_prices),
-                price_avg_ex_top=average_excluding_top_hours(
-                    ctx.daily_prices, settings.price_avg_exclude_top_hours
-                ),
-            )
-        except Exception:
-            log.exception("cycle.publish_failed")
+    try:
+        bus.publish(
+            ctx,
+            rooms,
+            boiler,
+            price_avg=average(ctx.daily_prices),
+            price_avg_ex_top=average_excluding_top_hours(
+                ctx.daily_prices, settings.price_avg_exclude_top_hours
+            ),
+        )
+    except Exception:
+        log.exception("cycle.publish_failed")
 
     ping(settings.healthcheck_url, success=True)
     log.info(

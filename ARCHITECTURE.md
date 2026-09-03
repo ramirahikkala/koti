@@ -32,17 +32,14 @@ footprint, MQTT as the integration bus. It deliberately ignores how things are w
 ║   │          auki kotiverkolle)      │         │  • dashboard / mobiili   │  ║
 ║   └──────────────▲───────────────────┘         │  • number-helperit =     │  ║
 ║                  │                             │    perus-setpointit      │  ║
-║                  │                             └───────────┬──────────────┘  ║
-║                  │                                         │ SQL             ║
-║                  │                         ┌───────────────┴────┐ ┌────────┐ ║
-║                  │                         │ PostgreSQL "possu" │◄┤Grafana │ ║
-║                  │                         │ (HA recorder)      │ └───┬────┘ ║
-║                  │                         └────────────────────┘     │      ║
-║                  │              ┌─────────────────┐                    │      ║
-║                  │              │      Caddy      │◄── HA UI ──────────┘      ║
-║                  │              │  reverse proxy  │◄── Grafana                ║
-║                  │              │  TLS            │                          ║
-║                  │              └────────▲────────┘                          ║
+║                  │                             │  • recorder (SQLite)     │  ║
+║                  │                             └──────────────────────────┘  ║
+║                  │                                                           ║
+║                  │             ┌─────────────────┐                           ║
+║                  │             │      Caddy      │◄── HA UI                  ║
+║                  │             │  reverse proxy  │                           ║
+║                  │             │  TLS            │                           ║
+║                  │             └────────▲────────┘                           ║
 ╚══════════════════╪═══════════════════════╪═══════════════════════════════════╝
                    │ MQTT / TLS :8883      │ HTTPS
                    │ (outbound only)       │ ha.ketunmetsa.fi
@@ -84,11 +81,12 @@ footprint, MQTT as the integration bus. It deliberately ignores how things are w
 - **Tailscale poistuu datapolusta.** Ei enää hyppykonetta laitteiden ja ohjaimen väliin.
   (Voit pitää sen VM:n SSH:hon / hätäyhteytenä kotiin, mutta se ei ole arkkitehtuurissa.)
 
-- **Perus-setpointit = HA number-helperit**, jotka HA julkaisee MQTT:hen → säädät lämpötilaa
-  HA:n käyttöliittymästä kuten ennenkin, mutta ohjain lukee sen väylältä.
+- **Perus-setpointit = ohjaimen omistamat MQTT `number`-entiteetit** (discovery), joiden arvon
+  ohjain pitää (retained state-topic). HA renderöi liukusäätimen; säätö menee väylän kautta.
 
-- **Grafana + Postgres** on jo pystyssä → lasketut arvot (`heating_boiler_decision`, per-huone
-  setpointit, hinnat) valuvat HA recorderin kautta samaan kantaan, chartattavissa suoraan.
+- **Historia = HA:n oma recorder (SQLite)** cloud-VM:llä. Lasketut arvot (`heating_boiler_decision`,
+  per-huone setpointit, hinnat) näkyvät HA:n History/Logbookissa ja ApexCharts-kortissa.
+  (Grafana + erillinen Postgres-recorder poistettiin — jäivät käyttämättä.)
 
 - **Vikatilanteet:** nettikatko kotona → Shellyt jäävät viimeiseen tilaan, sensoridata
   katkeaa kunnes yhteys palaa; mitään ei tarvitse konffata uusiksi. VM alas → koko homma
