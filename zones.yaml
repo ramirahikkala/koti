@@ -28,7 +28,7 @@ rooms:
   items:
     - id: olohuone
       control: onoff
-      temp_topic: koti/sensor/ruuvi_sisa_alakerta/state
+      temp_topic: koti/sensor/sisa_alakerta/state
       switch_topic: shelly1minig3-5432044efb74
       requests_boiler_heat: true  # forces the boiler on when this room wants heat
       base_temp:                  # controller-owned MQTT number (HA shows a slider)
@@ -42,12 +42,12 @@ rooms:
     # the broker; the exact topic depends on its MQTT device id.
     - id: kylpyhuone
       control: trv
-      temp_topic: koti/sensor/ruuvi_kylpyhuone/state
+      temp_topic: koti/sensor/kylpyhuone/state
       trv_ext_temp_topic: shellies/shelly-trv-kylpyhuone/ext_t/0
       requests_boiler_heat: false
 
     - id: khh
       control: trv
-      temp_topic: koti/sensor/blu_khh/state
+      temp_topic: koti/sensor/khh/state
       trv_ext_temp_topic: shellies/shelly-trv-khh/ext_t/0
       requests_boiler_heat: false
