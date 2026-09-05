@@ -1,6 +1,10 @@
 # v1 → v2 cutover
 
-Status: v2 code is on branch `v2` (v1 tagged `v1-legacy`). Not yet deployed.
+Status: **live** since 2026-09-05, `v2` branch, cloned to `/opt/koti` on the VM (v1's old
+checkout is `/home/rami/nordpool-temperature-control` — not moved, just retired once v2 has
+proven itself; v1 tagged `v1-legacy`). Ran with no shadow period, `DRY_RUN=false` from the
+first cycle — boiler + olohuone actuation confirmed working, TRV bridge still pending
+(prereq 4). Not yet merged to `main` (step 8).
 
 Plan: **no shadow period.** Turn v2 on live (`DRY_RUN=false`), watch the first cycle, keep v1
 one `docker compose up` away as the rollback. The decision math is a faithful port of v1 and
@@ -34,7 +38,9 @@ The controller talks only to the broker. No HA token, no LAN access needed.
 1. **Stop v1 first** — `docker compose down` in the v1 stack (`ha-temperature-controller` +
    `ha-temperature-web`). Both v1 and v2 write `<prefix>/command/switch:0`; never run them
    together.
-2. `git pull` + `git checkout v2` in this repo on the VM.
+2. Fresh clone, don't reuse v1's checkout: `git clone --branch v2 git@github.com:ramirahikkala/koti.git /opt/koti`
+   (note: this repo was renamed from `nordpool-temperature-control` to `koti` on GitHub —
+   the old remote URL still redirects, but update `origin` when convenient).
 3. `cp .env.example .env`, fill in:
    - `MQTT_HOST=mqtt.ketunmetsa.fi`, `MQTT_PORT=8883`, `MQTT_TLS=true`,
      `MQTT_USERNAME=heating` / `MQTT_PASSWORD`
@@ -52,7 +58,9 @@ The controller talks only to the broker. No HA token, no LAN access needed.
    - boiler decision (HEAT/BLOCK) + `switch.set` → confirm on
      `shelly1minig3-5432045dd3f0/status/switch:0` and the olohuone relay
    - `number.heating_olohuone_base_temp` appears in HA
-   - healthcheck ping; kill the container → `binary_sensor.heating_controller_online` → `off`
+   - healthcheck ping; kill the container → every `heating_*` entity goes `unavailable` within
+     the LWT interval (there's no separate "controller online" entity — each published
+     entity carries the same `availability_topic`)
 7. Rollback if it misbehaves: `docker compose down` here, `docker compose up -d` in the v1
    stack.
 8. Once it's been happy for a day: merge `v2` → `main`.
@@ -69,18 +77,22 @@ The controller talks only to the broker. No HA token, no LAN access needed.
 ## Datastore / dashboards
 
 - v2 has no application database. Everything it computes is published as MQTT entities that
-  land in the cloud HA recorder (SQLite) — view + chart them in HA's own History/Logbook or a
-  Lovelace ApexCharts card.
+  land in the cloud HA recorder (SQLite) — view + chart them in HA's own History/Logbook or
+  the git-managed "Lämmitys" dashboard (`../infra/ha-cloud/config/dashboards/lammitys.yaml`,
+  YAML-mode Lovelace alongside the default UI-managed Overview).
 - Grafana + the Postgres recorder are **retired** (Grafana went unused; `../infra/ha_postgresql`
   stays only for other services). Cloud HA keeps its default SQLite recorder — tune
   `recorder:` (`purge_keep_days`, `exclude:` for noisy BLE attributes) instead.
-- Entities to build panels from:
-  - per room: `sensor.heating_<id>_setpoint`, `_price_adjustment`, `_trv_temp` (trv only),
-    `binary_sensor.heating_<id>_demand`, `number.heating_<id>_base_temp`
-  - boiler: `sensor.heating_boiler_decision` (+ `reason`/`rank`/`forced`/`price` attrs),
-    `binary_sensor.heating_boiler_blocked`
-  - global: `sensor.heating_current_price`, `sensor.heating_price_avg_today`,
-    `sensor.heating_price_avg_ex_top`, `binary_sensor.heating_controller_online`
+- Entities to build panels from — note HA prefixes MQTT-discovered entities with the device
+  slug (`heating_controller_...`), not the bare `object_id`; check
+  `.storage/core.entity_registry` on the VM for the exact current IDs rather than guessing:
+  - per room: `..._<id>_setpoint` (onoff only), `..._<id>_price_adjustment`,
+    `..._<id>_trv_reported_temperature` (trv only), `..._<id>_heat_demand`,
+    `number...._<id>_base_setpoint` (onoff only)
+  - boiler: `..._boiler_decision` (+ `reason`/`rank`/`forced`/`price` attrs), `..._boiler_blocked`
+  - global: `..._current_electricity_price`, `..._price_average_today`,
+    `..._price_average_excl_peak_hours`; no dedicated "controller online" entity — watch any
+    `heating_*` entity go unavailable instead
 
 ## Open decision
 
