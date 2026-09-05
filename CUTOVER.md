@@ -1,10 +1,12 @@
 # v1 → v2 cutover
 
-Status: **live** since 2026-09-05, `v2` branch, cloned to `/opt/koti` on the VM (v1's old
-checkout is `/home/rami/nordpool-temperature-control` — not moved, just retired once v2 has
-proven itself; v1 tagged `v1-legacy`). Ran with no shadow period, `DRY_RUN=false` from the
-first cycle — boiler + olohuone actuation confirmed working, TRV bridge still pending
-(prereq 4). Not yet merged to `main` (step 8).
+Status: **live and merged to `main`** (2026-09-05 — 2026-09-06). Cloned to `/opt/koti` on the
+VM (v1's old checkout, `/home/rami/nordpool-temperature-control`, is retired but not yet
+deleted — v1 tagged `v1-legacy` regardless). Ran with no shadow period, `DRY_RUN=false` from
+the first cycle — boiler + olohuone actuation confirmed working. `v2` fast-forwarded into
+`main` cleanly (main had gained no commits since v2 branched, so this was a fast-forward, not
+a real merge). Remaining: switch `/opt/koti` from `v2` to `main`; TRV bridge (prereq 4) still
+pending gateway-01 reflash.
 
 Plan: **no shadow period.** Turn v2 on live (`DRY_RUN=false`), watch the first cycle, keep v1
 one `docker compose up` away as the rollback. The decision math is a faithful port of v1 and
