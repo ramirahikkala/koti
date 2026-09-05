@@ -2,55 +2,60 @@
 
 Status: v2 code is on branch `v2` (v1 tagged `v1-legacy`). Not yet deployed.
 
+Plan: **no shadow period.** Turn v2 on live (`DRY_RUN=false`), watch the first cycle, keep v1
+one `docker compose up` away as the rollback. The decision math is a faithful port of v1 and
+the two actuated devices (boiler block relay, olohuone floor-heat) both have a mechanical
+backstop, so a bad cycle is recoverable.
+
 ## Prerequisites — all on the MQTT bus (`infra` repo)
 
 The controller talks only to the broker. No HA token, no LAN access needed.
 
 1. Broker + MQTT integration in HA — `infra/mqtt/` (`mqtt.ketunmetsa.fi:8883` TLS, users
    incl. `heating`). Device onboarding runbook: `koti-devices/DEVICES.md`.
-2. **Sensor topics.** The ESPHome gateway (`koti-devices/gateways/gateway-01.yaml`) must publish
-   each room + outdoor sensor; find its state topic with
-   `mosquitto_sub -h mqtt.ketunmetsa.fi -p 8883 -u ha -P '<pw>' -t 'koti/#' -v` and set
-   it as `temp_topic` / `OUTDOOR_TEMP_TOPIC`. gateway-01.yaml still has placeholder MACs — fix
-   those first.
-3. **Shelly relays** (boiler block + olohuone) onboarded to MQTT per `koti-devices/DEVICES.md`
-   ("Generic status update over MQTT" ON so `<prefix>/status/switch:0` is retained). Put the
-   `<model>-<mac>` prefix in `zones.yaml` as `switch_topic`.
-4. **Shelly TRVs** (kylpyhuone, khh): enable MQTT on each, point it at the broker, and set
-   `trv_ext_temp_topic` in `zones.yaml` to the topic it reads as external temperature (depends
-   on the TRV's MQTT device id — verify with `mosquitto_sub`).
+2. **Sensor topics.** `koti-devices/gateways/gateway-01.yaml` (flashed) publishes the whole
+   heating loop under `topic_prefix: koti` — `koti/sensor/{sisa_alakerta,kylpyhuone,khh,ulko_kodari}/state`.
+   These are already in `zones.yaml` / `OUTDOOR_TEMP_TOPIC`. Verify live with
+   `mosquitto_sub -h mqtt.ketunmetsa.fi -p 8883 -u ha -P '<pw>' -t 'koti/#' -v`.
+3. **Shelly relays** — boiler block (`shelly1minig3-5432045dd3f0`) and olohuone
+   (`shelly1minig3-5432044efb74`) both on MQTT, "Generic status update over MQTT" ON so
+   `<prefix>/status/switch:0` is retained. Done; prefixes are in `zones.yaml`. Also declared
+   as `mqtt.switch` in `infra/ha-cloud/config/configuration.yaml`.
+4. **Shelly TRVs** (kylpyhuone, khh) — the Gen1 TRVs can't do MQTT-over-TLS, so
+   `gateway-01` bridges: the controller publishes a retained ext-temp to
+   `koti/trv/<room>/ext_t`, gateway-01 forwards it to the TRV over LAN HTTP
+   (`GET /ext_t?temp=X`) on new value + every 5 min. Needs: reserved DHCP for both TRVs
+   (khh `192.168.86.31`, kylpyhuone `192.168.86.32`), the TRV's "external sensor" mode on,
+   and gateway-01 reflashed with the bridge block. Until then these two rooms just publish
+   to a topic nobody forwards yet (per-room `try/except`, harmless).
 
-## Deploy (Hetzner VM)
+## Cut over (Hetzner VM)
 
-1. `git pull` + `git checkout v2` in this repo on the VM.
-2. `cp .env.example .env`, fill in:
+1. **Stop v1 first** — `docker compose down` in the v1 stack (`ha-temperature-controller` +
+   `ha-temperature-web`). Both v1 and v2 write `<prefix>/command/switch:0`; never run them
+   together.
+2. `git pull` + `git checkout v2` in this repo on the VM.
+3. `cp .env.example .env`, fill in:
    - `MQTT_HOST=mqtt.ketunmetsa.fi`, `MQTT_PORT=8883`, `MQTT_TLS=true`,
      `MQTT_USERNAME=heating` / `MQTT_PASSWORD`
-   - `OUTDOOR_TEMP_TOPIC`, `HEALTHCHECK_URL` (reuse v1's healthchecks.io UUID)
-   - `DRY_RUN=true` for now
-3. Check `zones.yaml` — `temp_topic` for every room and `base_temp:` for `olohuone`. The
-   base setpoint that was `input_number.sisalampoasetus` is now the controller-owned
-   `number.heating_olohuone_base_temp` (HA slider); set its starting value via `base_temp.default`.
-4. `docker compose up -d --build` (runs as a 3rd stack alongside v1).
-
-## Shadow period (3–5 days)
-
-- v2 runs with `DRY_RUN=true`: it logs intended actions + publishes MQTT entities, but does
-  not actuate.
-- Compare v1's `data/heating_decisions.jsonl` (HEAT/BLOCK) against v2's
-  `sensor.heating_boiler_decision` history in HA.
-- Spot-check per-room: v1's published setpoint sensor vs `sensor.heating_<room>_setpoint`.
-
-## Cut over
-
-1. Stop v1: `docker compose down` in the v1 stack (`ha-temperature-controller` +
-   `ha-temperature-web`).
-2. Set `DRY_RUN=false` in v2's `.env`, `docker compose up -d`.
-3. Watch one live cycle: Shelly relays flip (`<prefix>/command/switch:0`, confirmed by
-   `switch.set` in the logs), TRV ext-temp published, MQTT entities update, healthcheck
-   pings. Kill the container → `binary_sensor.heating_controller_online` goes `off` within
-   the LWT interval.
-4. Merge `v2` → `main` in this repo.
+   - `OUTDOOR_TEMP_TOPIC=koti/sensor/ulko_kodari/state`
+   - `HEALTHCHECK_URL` (reuse v1's healthchecks.io UUID)
+   - `DRY_RUN=false`
+4. Check `zones.yaml` — `temp_topic` for every room, `base_temp:` for `olohuone`, and decide
+   the TRV rooms (prereq 4). The base setpoint that was `input_number.sisalampoasetus` is now
+   the controller-owned `number.heating_olohuone_base_temp` (HA slider); its starting value
+   comes from `base_temp.default` (21.0) on the first run, then the retained state topic.
+5. `docker compose up -d --build`.
+6. **Watch the first cycle** (`docker compose logs -f`):
+   - `mqtt.connected`, topic subscriptions, `cycle.start`
+   - `room.done` lines with real temperatures — sanity-check against HA
+   - boiler decision (HEAT/BLOCK) + `switch.set` → confirm on
+     `shelly1minig3-5432045dd3f0/status/switch:0` and the olohuone relay
+   - `number.heating_olohuone_base_temp` appears in HA
+   - healthcheck ping; kill the container → `binary_sensor.heating_controller_online` → `off`
+7. Rollback if it misbehaves: `docker compose down` here, `docker compose up -d` in the v1
+   stack.
+8. Once it's been happy for a day: merge `v2` → `main`.
 
 ## infra repo (`../infra`, separate git repo)
 

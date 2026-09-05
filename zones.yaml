@@ -8,7 +8,9 @@
 #   temp_topic       - ESPHome gateway sensor state, koti/sensor/<slug>/state (all gateways
 #                      share the `koti` prefix, so a topic doesn't change if the tag moves node)
 #   switch_topic     - Shelly relay prefix; controller uses <prefix>/command|status/<component>
-#   trv_ext_temp_topic - topic the Shelly TRV reads as its external temperature
+#   trv_ext_temp_topic - retained topic the TRV bridge ESP (gateway-01) reads and forwards to
+#                        the Shelly TRV over LAN HTTP (GET /ext_t?temp=X); the TRV itself
+#                        can't reach the TLS-only cloud broker
 # Discover a topic with:
 #   mosquitto_sub -h mqtt.ketunmetsa.fi -p 8883 -u ha -P '<pw>' -t 'koti/#' -v
 
@@ -37,17 +39,17 @@ rooms:
         max: 25.0
         step: 0.5
 
-    # Shelly TRV: the controller publishes a price-adjusted "external temperature" to the
-    # TRV's MQTT topic (was a direct HTTP GET). Each TRV needs MQTT enabled and pointed at
-    # the broker; the exact topic depends on its MQTT device id.
+    # Shelly TRV: the controller publishes a price-adjusted "external temperature" (retained)
+    # to koti/trv/<room>/ext_t. gateway-01 subscribes and forwards it to the TRV over LAN
+    # HTTP every few minutes (battery TRVs duty-cycle their WiFi). Topics are ours to name.
     - id: kylpyhuone
       control: trv
       temp_topic: koti/sensor/kylpyhuone/state
-      trv_ext_temp_topic: shellies/shelly-trv-kylpyhuone/ext_t/0
+      trv_ext_temp_topic: koti/trv/kylpyhuone/ext_t
       requests_boiler_heat: false
 
     - id: khh
       control: trv
       temp_topic: koti/sensor/khh/state
-      trv_ext_temp_topic: shellies/shelly-trv-khh/ext_t/0
+      trv_ext_temp_topic: koti/trv/khh/ext_t
       requests_boiler_heat: false

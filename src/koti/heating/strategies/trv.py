@@ -34,7 +34,8 @@ class TrvStrategy:
         if dry_run:
             log.info("trv.dry_run", zone=room.id, topic=room.trv_ext_temp_topic, temp=trv_temp)
         else:
-            actuated = bus.publish_raw(room.trv_ext_temp_topic, f"{trv_temp:.1f}")
+            # retain: a battery TRV bridge (ESP) may reconnect mid-cycle and needs the last value.
+            actuated = bus.publish_raw(room.trv_ext_temp_topic, f"{trv_temp:.1f}", retain=True)
 
         return RoomResult(
             zone_id=room.id,
