@@ -373,8 +373,22 @@ class MqttBus:
                     unit="°C",
                     device_class="temperature",
                 )
+            # Human-readable one-liner, same text as the room.done log line. Its own state
+            # history in HA is a de-facto log view of this room's decisions over time.
+            self._publish_entity(
+                "sensor",
+                f"{oid}_status",
+                f"{r.zone_id} status",
+                r.detail,
+            )
 
         if boiler is not None:
+            self._publish_entity(
+                "sensor",
+                "heating_boiler_status",
+                "Boiler status",
+                boiler.reason,
+            )
             self._publish_entity(
                 "sensor",
                 "heating_boiler_decision",
